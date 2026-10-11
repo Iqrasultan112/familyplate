@@ -521,7 +521,7 @@ router.post('/meal-chat', async (req, res) => {
         recipes: turn.role === 'assistant' && Array.isArray(turn.recipes) ? turn.recipes.map(name => String(name || '').slice(0, 100)).filter(Boolean).slice(0, 3) : []
       }))
       : [];
-    conversation.push({ role: 'user', content: message });
+    conversation.push({ role: 'user', content: message, recipes: [] });
     const mealConstraints = extractChatFoodConstraints(conversation);
     const asksForDifferentMeal = /\b(different|another|something else|anything else|new idea|other idea)\b/i.test(message);
     const previouslySuggestedNames = new Set(conversation
@@ -540,7 +540,7 @@ router.post('/meal-chat', async (req, res) => {
       recentFamilyRequestsAndVotes: voteHistory.slice(0, 5),
       // Prior assistant recipes can anchor the model to a meal the family just
       // rejected. Keep the family's own requests as conversational context.
-      conversation: conversation.slice(-8).map(({ role, content, recipes }) => ({ role, content: content.slice(0, 700), ...(recipes.length ? { suggestedRecipes: recipes } : {}) })),
+      conversation: conversation.slice(-8).map(({ role, content, recipes }) => ({ role, content: content.slice(0, 700), ...(Array.isArray(recipes) && recipes.length ? { suggestedRecipes: recipes } : {}) })),
       currentMealConstraints: {
         avoid: [...mealConstraints.avoided],
         include: [...mealConstraints.required],
