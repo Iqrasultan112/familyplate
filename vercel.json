@@ -1,0 +1,37 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "familyplate-web": {
+      "root": "client",
+      "framework": "vite",
+      "buildCommand": "npm ci && npm run build"
+    },
+    "familyplate-api": {
+      "root": "server",
+      "framework": "express",
+      "buildCommand": "npm ci && npm run db:generate:postgres && npm run db:deploy:postgres && npm run db:seed:demo"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": { "service": "familyplate-api" }
+    },
+    {
+      "source": "/uploads/(.*)",
+      "destination": { "service": "familyplate-api" }
+    },
+    {
+      "source": "/socket.io/(.*)",
+      "destination": { "service": "familyplate-api" }
+    },
+    {
+      "source": "/healthz",
+      "destination": { "service": "familyplate-api" }
+    },
+    {
+      "source": "/(.*)",
+      "destination": { "service": "familyplate-web" }
+    }
+  ]
+}

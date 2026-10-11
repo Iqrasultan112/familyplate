@@ -35,6 +35,9 @@ const app = express();
 const server = http.createServer(app);
 const configuredClientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
 const allowedClientOrigins = new Set([configuredClientUrl.replace(/\/$/, '')]);
+for (const hostname of [process.env.VERCEL_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL]) {
+  if (hostname) allowedClientOrigins.add(`https://${hostname.replace(/^https?:\/\//i, '').replace(/\/$/, '')}`);
+}
 try {
   const clientOrigin = new URL(configuredClientUrl);
   if (clientOrigin.hostname === 'localhost' || clientOrigin.hostname === '127.0.0.1') {
@@ -80,12 +83,11 @@ app.use(express.urlencoded({ extended: true }));
 
 app.get('/healthz', (_req, res) => res.status(200).json({ status: 'ok' }));
 
-// Create uploads directory if it doesn't exist
-if (!fs.existsSync('./uploads')) {
-  fs.mkdirSync('./uploads');
-}
+// Vercel instances are ephemeral; use their writable temp directory for uploads.
+const uploadsDirectory = process.env.VERCEL ? '/tmp/familyplate-uploads' : './uploads';
+fs.mkdirSync(uploadsDirectory, { recursive: true });
 
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', express.static(uploadsDirectory));
 
 // Setup Sockets
 setupFamilyChat(io);
@@ -119,6 +121,10 @@ app.use((req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+if (!process.env.VERCEL) {
+  server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+export default server;

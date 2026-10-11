@@ -19,7 +19,7 @@ export default function CommunityChat() {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    socketRef.current = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000', { auth: { token: localStorage.getItem('token') } });
+    socketRef.current = io(import.meta.env.VITE_SOCKET_URL || (import.meta.env.PROD ? window.location.origin : 'http://localhost:5000'), { auth: { token: localStorage.getItem('token') }, transports: ['websocket'] });
     socketRef.current.on('connect', () => {
       socketRef.current.emit('join_community');
       if (user?.id) socketRef.current.emit('join_user_room', user.id);

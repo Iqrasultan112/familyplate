@@ -4,7 +4,7 @@ import crypto from 'crypto';
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    cb(null, process.env.VERCEL ? '/tmp/familyplate-uploads/' : 'uploads/');
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = crypto.randomBytes(16).toString('hex');

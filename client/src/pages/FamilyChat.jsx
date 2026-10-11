@@ -40,8 +40,8 @@ export default function FamilyChat() {
       setFamily(res.data.family);
       
       // Setup Socket
-      const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
-      socketRef.current = io(socketUrl, { auth: { token: localStorage.getItem('token') } });
+      const socketUrl = import.meta.env.VITE_SOCKET_URL || (import.meta.env.PROD ? window.location.origin : 'http://localhost:5000');
+      socketRef.current = io(socketUrl, { auth: { token: localStorage.getItem('token') }, transports: ['websocket'] });
       
       socketRef.current.on('connect', () => {
         socketRef.current.emit('join_family', res.data.family.id);
