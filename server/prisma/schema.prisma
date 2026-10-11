@@ -1,0 +1,336 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id               Int                @id @default(autoincrement())
+  name             String
+  email            String             @unique
+  password         String
+  avatar           String?
+  role             String             @default("member") // maker, member
+  allergies        String?            // JSON string array e.g. ["Peanuts", "Dairy"]
+  dietaryPreferences String?         // JSON string array e.g. ["Halal", "Vegetarian"]
+  dislikes         String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  familyMembers    FamilyMember[]
+  familiesCreated  Family[]           @relation("FamilyCreator")
+  messages         FamilyMessage[]
+  mealRequests     MealRequest[]
+  votes            Vote[]
+  recipes          Recipe[]
+  communityPosts   CommunityPost[]
+  comments         Comment[]
+  likes            Like[]
+  inventoryItems   Inventory[]
+  pantryUses       PantryUse[]
+  shoppingItems    ShoppingItem[]
+  savedRecipes     SavedRecipe[]
+  recipeCollections RecipeCollection[]
+  notifications    Notification[]
+  personalMenus    WeeklyMenu[]       @relation("PersonalMenu")
+  groupMemberships CommunityGroupMember[]
+  groupMessages    CommunityGroupMessage[]
+  communityGroupsOwned CommunityGroup[] @relation("GroupCreator")
+  eventSuggestionVotes EventSuggestionVote[]
+}
+
+model Family {
+  id               Int                @id @default(autoincrement())
+  name             String
+  code             String             @unique
+  expectedMembers  Int                @default(4)
+  creatorId        Int
+  creator          User               @relation("FamilyCreator", fields: [creatorId], references: [id])
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  members          FamilyMember[]
+  messages         FamilyMessage[]
+  mealRequests     MealRequest[]
+  weeklyMenus      WeeklyMenu[]       @relation("FamilyMenu")
+  events           Event[]
+}
+
+model FamilyMember {
+  id               Int                @id @default(autoincrement())
+  userId           Int
+  user             User               @relation(fields: [userId], references: [id])
+  familyId         Int
+  family           Family             @relation(fields: [familyId], references: [id])
+  role             String             @default("member") // admin, member, maker
+  joinedAt         DateTime           @default(now())
+
+  @@unique([userId, familyId])
+}
+
+model FamilyMessage {
+  id               Int                @id @default(autoincrement())
+  content          String
+  userId           Int
+  user             User               @relation(fields: [userId], references: [id])
+  familyId         Int
+  family           Family             @relation(fields: [familyId], references: [id])
+  createdAt        DateTime           @default(now())
+}
+
+model MealRequest {
+  id               Int                @id @default(autoincrement())
+  mealName         String
+  recipeId         Int?
+  requestedDate    DateTime
+  message          String?
+  status           String             @default("pending") // pending, approved, rejected, added-to-menu
+  isApproved       Boolean            @default(false)
+  approvedBy       Int?
+  userId           Int
+  user             User               @relation(fields: [userId], references: [id])
+  familyId         Int
+  family           Family             @relation(fields: [familyId], references: [id])
+  votes            Vote[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+model Vote {
+  id               Int                @id @default(autoincrement())
+  selectedOption   String // yes, no, abstain
+  userId           Int
+  user             User               @relation(fields: [userId], references: [id])
+  requestId        Int
+  request          MealRequest        @relation(fields: [requestId], references: [id])
+  createdAt        DateTime           @default(now())
+
+  @@unique([userId, requestId])
+}
+
+model WeeklyMenu {
+  id               Int                @id @default(autoincrement())
+  date             DateTime
+  recipeId         Int
+  recipe           Recipe             @relation(fields: [recipeId], references: [id])
+  familyId         Int?
+  family           Family?            @relation("FamilyMenu", fields: [familyId], references: [id])
+  eventId          Int?
+  event            Event?              @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  servings         Int?
+  mealType         String             @default("Dinner")
+  status           String               @default("planned")
+  cookedAt         DateTime?
+  userId           Int?
+  user             User?              @relation("PersonalMenu", fields: [userId], references: [id])
+  createdAt        DateTime           @default(now())
+
+  @@unique([familyId, recipeId, date])
+}
+
+model Event {
+  id               Int                @id @default(autoincrement())
+  name             String
+  date             DateTime
+  description      String?
+  eventType        String             @default("gathering")
+  guestCount       Int                @default(4)
+  familyId         Int
+  family           Family             @relation(fields: [familyId], references: [id])
+  suggestions      EventSuggestion[]
+  weeklyMenus      WeeklyMenu[]
+  createdAt        DateTime           @default(now())
+}
+
+model EventSuggestion {
+  id               Int                @id @default(autoincrement())
+  recipeName       String
+  recipeId         Int?
+  recipe           Recipe?            @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  eventId          Int
+  event            Event              @relation(fields: [eventId], references: [id])
+  voteCount        Int                @default(0) @map("votes")
+  isFinal          Boolean            @default(false)
+  createdAt        DateTime           @default(now())
+  ballots          EventSuggestionVote[]
+}
+
+model EventSuggestionVote {
+  id           Int             @id @default(autoincrement())
+  suggestionId Int
+  suggestion   EventSuggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  userId       Int
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime        @default(now())
+
+  @@unique([suggestionId, userId])
+}
+
+model Recipe {
+  id               Int                @id @default(autoincrement())
+  name             String
+  ingredients      String             // JSON string
+  instructions     String             // JSON string
+  prepTime         String?
+  cookTime         String?
+  servings         String?
+  image            String?
+  sourceUrl        String?
+  nutrition        String?
+  creatorId        Int
+  creator          User               @relation(fields: [creatorId], references: [id])
+  weeklyMenus      WeeklyMenu[]
+  communityPosts   CommunityPost[]
+  savedBy          SavedRecipe[]
+  collectionItems  RecipeCollectionItem[]
+  eventSuggestions EventSuggestion[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+model CommunityGroup {
+  id          Int                    @id @default(autoincrement())
+  name        String
+  kind        String                 @default("friends")
+  inviteCode  String                 @unique
+  creatorId   Int
+  creator     User                   @relation("GroupCreator", fields: [creatorId], references: [id])
+  createdAt   DateTime               @default(now())
+  members     CommunityGroupMember[]
+  messages    CommunityGroupMessage[]
+}
+
+model CommunityGroupMember {
+  id        Int            @id @default(autoincrement())
+  groupId   Int
+  group     CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String         @default("member")
+  joinedAt  DateTime       @default(now())
+
+  @@unique([groupId, userId])
+}
+
+model CommunityGroupMessage {
+  id        Int            @id @default(autoincrement())
+  groupId   Int
+  group     CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String
+  kind      String         @default("text")
+  createdAt DateTime       @default(now())
+}
+
+model CommunityPost {
+  id               Int                @id @default(autoincrement())
+  content          String
+  type             String             @default("share") // share, request
+  userId           Int
+  user             User               @relation(fields: [userId], references: [id])
+  recipeId         Int?
+  recipe           Recipe?            @relation(fields: [recipeId], references: [id])
+  comments         Comment[]
+  likes            Like[]
+  createdAt        DateTime           @default(now())
+}
+
+model Comment {
+  id               Int                @id @default(autoincrement())
+  content          String
+  userId           Int
+  user             User               @relation(fields: [userId], references: [id])
+  postId           Int
+  post             CommunityPost      @relation(fields: [postId], references: [id])
+  createdAt        DateTime           @default(now())
+}
+
+model Like {
+  id               Int                @id @default(autoincrement())
+  userId           Int
+  user             User               @relation(fields: [userId], references: [id])
+  postId           Int
+  post             CommunityPost      @relation(fields: [postId], references: [id])
+  createdAt        DateTime           @default(now())
+
+  @@unique([userId, postId])
+}
+
+model Inventory {
+  id               Int                @id @default(autoincrement())
+  ingredient       String
+  quantity         String
+  userId           Int
+  user             User               @relation(fields: [userId], references: [id])
+  createdAt        DateTime           @default(now())
+}
+
+model PantryUse {
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipeName         String
+  ingredient         String
+  quantityUsed       String
+  quantityRemaining  String
+  createdAt          DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model ShoppingItem {
+  id               Int                @id @default(autoincrement())
+  ingredient       String
+  quantity         String
+  isPurchased      Boolean            @default(false)
+  userId           Int
+  user             User               @relation(fields: [userId], references: [id])
+  createdAt        DateTime           @default(now())
+}
+
+model SavedRecipe {
+  id               Int                @id @default(autoincrement())
+  userId           Int
+  user             User               @relation(fields: [userId], references: [id])
+  recipeId         Int
+  recipe           Recipe             @relation(fields: [recipeId], references: [id])
+  createdAt        DateTime           @default(now())
+
+  @@unique([userId, recipeId])
+}
+
+model RecipeCollection {
+  id        Int                    @id @default(autoincrement())
+  name      String
+  userId    Int
+  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     RecipeCollectionItem[]
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId, updatedAt])
+}
+
+model RecipeCollectionItem {
+  id           Int              @id @default(autoincrement())
+  collectionId Int
+  collection   RecipeCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  recipeId     Int
+  recipe       Recipe           @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  addedAt      DateTime         @default(now())
+
+  @@unique([collectionId, recipeId])
+  @@index([recipeId])
+}
+
+model Notification {
+  id               Int                @id @default(autoincrement())
+  message          String
+  isRead           Boolean            @default(false)
+  userId           Int
+  user             User               @relation(fields: [userId], references: [id])
+  createdAt        DateTime           @default(now())
+}

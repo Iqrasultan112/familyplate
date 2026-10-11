@@ -1,0 +1,3 @@
+ALTER TABLE "WeeklyMenu" ADD COLUMN "servings" INTEGER;
+ALTER TABLE "WeeklyMenu" ADD COLUMN "status" TEXT NOT NULL DEFAULT 'planned';
+ALTER TABLE "WeeklyMenu" ADD COLUMN "cookedAt" DATETIME;

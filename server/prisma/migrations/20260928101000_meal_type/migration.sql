@@ -1,0 +1,1 @@
+ALTER TABLE "WeeklyMenu" ADD COLUMN "mealType" TEXT NOT NULL DEFAULT 'Dinner';
