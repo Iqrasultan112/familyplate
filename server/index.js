@@ -78,6 +78,8 @@ app.use((_req, res, next) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.get('/healthz', (_req, res) => res.status(200).json({ status: 'ok' }));
+
 // Create uploads directory if it doesn't exist
 if (!fs.existsSync('./uploads')) {
   fs.mkdirSync('./uploads');

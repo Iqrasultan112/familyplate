@@ -8,6 +8,9 @@
     "start": "node index.js",
     "db:migrate": "prisma migrate dev --name init",
     "db:generate": "prisma generate",
+    "db:generate:postgres": "prisma generate --schema=prisma/schema.postgresql.prisma",
+    "db:deploy:postgres": "prisma db push --schema=prisma/schema.postgresql.prisma",
+    "db:seed:demo": "node prisma/seed-demo-households.js",
     "db:studio": "prisma studio"
   },
   "dependencies": {

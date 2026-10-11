@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const sharedDemoPassword = 'FamilyPlate@2026';
+const sharedDemoPassword = process.env.DEMO_USER_PASSWORD?.trim();
 const dates = Array.from({ length: 14 }, (_, index) => new Date(Date.UTC(2026, 8, 14 + index)));
 
 const households = [
@@ -224,9 +224,16 @@ const recipeData = name => {
 };
 
 const main = async () => {
+  if (!sharedDemoPassword || sharedDemoPassword.length < 12) {
+    throw new Error('Set DEMO_USER_PASSWORD to a private password of at least 12 characters before seeding demo accounts.');
+  }
   const allEmails = households.flatMap(house => house.members.map(member => member.email));
   const existing = await prisma.user.findMany({ where: { email: { in: allEmails } }, select: { email: true } });
-  if (existing.length) throw new Error(`Demo seed stopped: one or more demo emails already exist (${existing.map(user => user.email).join(', ')}). No records were changed.`);
+  if (existing.length === allEmails.length) {
+    console.log('Demo households already exist; skipping seed.');
+    return;
+  }
+  if (existing.length) throw new Error(`Demo seed stopped: some demo accounts already exist (${existing.map(user => user.email).join(', ')}). No records were changed.`);
   const passwordHash = await bcrypt.hash(sharedDemoPassword, 10);
 
   const summary = [];

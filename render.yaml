@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: familyplate-api
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm ci && npm run db:generate:postgres
+    startCommand: npm run db:deploy:postgres && npm run db:seed:demo && npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLIENT_URL
+        fromService:
+          type: web
+          name: familyplate-web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: GROQ_API_KEY
+        sync: false
+      - key: DEMO_USER_PASSWORD
+        sync: false
+
+  - type: web
+    name: familyplate-web
+    runtime: static
+    rootDir: client
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: familyplate-api
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: VITE_SOCKET_URL
+        fromService:
+          type: web
+          name: familyplate-api
+          envVarKey: RENDER_EXTERNAL_URL
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
