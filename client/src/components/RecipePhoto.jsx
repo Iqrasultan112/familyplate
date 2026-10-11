@@ -1,17 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { UtensilsCrossed } from 'lucide-react';
 import api from '../lib/api';
-import { findCommonsRecipePhoto, findOpenverseRecipePhoto, resolveRecipeImage } from '../lib/recipeImage';
+import { resolveRecipeImage } from '../lib/recipeImage';
 
 const isUserPhoto = image => /^data:image\//i.test(String(image || '')) || String(image || '').startsWith('/uploads/');
-const isVerifiedOnlinePhoto = (image, recipe) => /(?:themealdb\.com|upload\.wikimedia\.org)/i.test(String(image || '')) || /api\.openverse\.org\/v1\/images\/[^/]+\/thumb\/?$/i.test(String(image || '')) || recipe?.photoSource === 'Openverse';
 const pendingPhotoRequests = new Map();
 const getIngredients = recipe => (Array.isArray(recipe?.ingredients) ? recipe.ingredients : [])
   .map(item => String(typeof item === 'string' ? item : item?.name || '').trim())
   .filter(Boolean);
 const photoCacheKey = recipe => {
   const ingredients = getIngredients(recipe).map(value => value.toLowerCase()).sort().join('|');
-  return `familyplate:food-photo-v4:${String(recipe?.name || recipe?.title || 'family meal').trim().toLowerCase()}:${ingredients}`;
+  return `familyplate:food-photo-v5:${String(recipe?.name || recipe?.title || 'family meal').trim().toLowerCase()}:${ingredients}`;
 };
 
 export default function RecipePhoto({ recipe, className = '', alt, ...props }) {
@@ -20,14 +19,13 @@ export default function RecipePhoto({ recipe, className = '', alt, ...props }) {
   const key = photoCacheKey(recipe);
   const [photo, setPhoto] = useState(() => {
     if (isUserPhoto(sourceImage)) return resolveRecipeImage(sourceImage);
-    if (isVerifiedOnlinePhoto(sourceImage, recipe)) return sourceImage;
     try { return localStorage.getItem(key) || ''; }
     catch { return ''; }
   });
 
   useEffect(() => {
     let active = true;
-    if (isUserPhoto(sourceImage) || isVerifiedOnlinePhoto(sourceImage, recipe)) {
+    if (isUserPhoto(sourceImage)) {
       setPhoto(resolveRecipeImage(sourceImage));
       return () => { active = false; };
     }
@@ -37,11 +35,9 @@ export default function RecipePhoto({ recipe, className = '', alt, ...props }) {
 
     const requestPhoto = async () => {
       if (pendingPhotoRequests.has(key)) return pendingPhotoRequests.get(key);
-      const request = Promise.any([
-        api.get('/ai/recipe-image', { params: { name } }).then(({ data }) => data?.image || Promise.reject(new Error('No server photo'))),
-        findOpenverseRecipePhoto(name).then(photo => photo?.image || Promise.reject(new Error('No Openverse photo'))),
-        findCommonsRecipePhoto(name).then(image => image || Promise.reject(new Error('No browser photo')))
-      ]).catch(() => '');
+      const request = api.get('/ai/recipe-image', { params: { name } })
+        .then(({ data }) => data?.image || '')
+        .catch(() => '');
       pendingPhotoRequests.set(key, request);
       try { return await request; }
       finally { pendingPhotoRequests.delete(key); }

@@ -5,6 +5,8 @@ import api from '../lib/api';
 import toast from 'react-hot-toast';
 import RecipePhoto from '../components/RecipePhoto';
 
+const localDateKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
 const MyMenu = () => {
   const [menuItems, setMenuItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,10 +26,9 @@ const MyMenu = () => {
   const fetchMenu = async () => {
     try {
       setLoading(true);
-      // Format week start to YYYY-MM-DD
-      const dateStr = currentWeekStart.toISOString().split('T')[0];
+      const dateStr = localDateKey(currentWeekStart);
       const res = await api.get(`/menu?weekStart=${dateStr}`);
-      setMenuItems(res.data);
+      setMenuItems(Array.isArray(res.data) ? res.data : []);
     } catch (error) {
       console.error(error);
       toast.error('Failed to load menu');
@@ -43,7 +44,10 @@ const MyMenu = () => {
         api.get('/recipes/my/recipes')
       ]);
       
-      const allRecipes = [...savedRes.data, ...myRes.data];
+      const allRecipes = [
+        ...(Array.isArray(savedRes.data) ? savedRes.data : savedRes.data?.recipes || []),
+        ...(Array.isArray(myRes.data) ? myRes.data : myRes.data?.recipes || [])
+      ];
       // Deduplicate by ID
       const unique = Array.from(new Map(allRecipes.map(r => [r.id, r])).values());
       setRecipes(unique);
@@ -131,14 +135,14 @@ const MyMenu = () => {
       d.setDate(d.getDate() + i);
       return {
         name: d.toLocaleDateString('en-US', { weekday: 'short' }),
-        dateString: d.toISOString().split('T')[0],
+        dateString: localDateKey(d),
         displayDate: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
       };
     });
   };
 
   const weekDays = getWeekDays();
-  const filteredRecipes = recipes.filter(r => r.title.toLowerCase().includes(search.toLowerCase()));
+  const filteredRecipes = recipes.filter(r => String(r.title || r.name || '').toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="page-shell max-w-6xl">
@@ -166,7 +170,7 @@ const MyMenu = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {weekDays.map(day => {
-            const dayItems = menuItems.filter(item => item.date === day.dateString);
+            const dayItems = menuItems.filter(item => String(item.date || '').slice(0, 10) === day.dateString);
             
             return (
               <div key={day.dateString} className="card p-0 flex flex-col h-full bg-white border-primary-200 overflow-hidden">
@@ -195,7 +199,7 @@ const MyMenu = () => {
                     dayItems.map(item => (
                       <div key={item.id} className="border border-primary-100 rounded-xl p-3 bg-white shadow-sm relative group">
                         <Link to={`/recipes/${item.recipeId}`} className="font-semibold text-primary-950 hover:text-primary-800 mb-1 block pr-8 truncate">
-                          {item.recipe?.title || 'Unknown Recipe'}
+                          {item.recipe?.title || item.recipe?.name || 'Unknown Recipe'}
                         </Link>
                         
                         <div className="flex justify-between items-center mt-2">
@@ -211,7 +215,7 @@ const MyMenu = () => {
                         <button 
                           onClick={() => handleRemove(item.id)}
                           type="button"
-                          aria-label={`Remove ${item.recipe?.title || 'meal'} from ${day.name}`}
+                          aria-label={`Remove ${item.recipe?.title || item.recipe?.name || 'meal'} from ${day.name}`}
                           title="Remove meal"
                           className="absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-lg text-primary-400 hover:text-red-700 hover:bg-red-50 transition-colors"
                         >
@@ -266,7 +270,7 @@ const MyMenu = () => {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{recipe.title}</p>
+                      <p className="font-medium text-gray-900 truncate">{recipe.title || recipe.name}</p>
                       <p className="text-xs text-gray-500 truncate">{recipe.prepTime}m • {recipe.servings} servings</p>
                     </div>
                   </button>

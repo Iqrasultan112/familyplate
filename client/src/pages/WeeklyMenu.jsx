@@ -74,11 +74,12 @@ export default function WeeklyMenu() {
         const eventRes = await api.get(`/events/family/${fId}`).catch(() => ({ data: [] }));
         setEvents(eventRes.data || []);
       } else setEvents([]);
-      const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-      const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+      const monthStart = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`;
+      const nextMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+      const monthEnd = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`;
       setMenuItems((res.data || []).filter(item => {
-        const d = new Date(item.date); d.setHours(0,0,0,0);
-        return d >= start && d < end;
+        const key = String(item.date || '').slice(0, 10);
+        return key >= monthStart && key < monthEnd;
       }));
     } catch { toast.error('Failed to load menu'); }
     finally { setLoading(false); }
@@ -109,8 +110,7 @@ export default function WeeklyMenu() {
 
   const openModal = (dateObj, type = 'Dinner') => {
     if (toLocalDateKey(dateObj) < toLocalDateKey(new Date())) return;
-    const tzoffset = dateObj.getTimezoneOffset() * 60000;
-    setSelectedDate(new Date(dateObj - tzoffset).toISOString().slice(0, 10));
+    setSelectedDate(toLocalDateKey(dateObj));
     setMealType(type);
     setRecipeSearch('');
     setShowAddModal(true);
@@ -158,7 +158,7 @@ export default function WeeklyMenu() {
 
   const beginMealEdit = (meal, field = 'date') => {
     setEditingMeal({ ...meal, editField: field });
-    setEditDate(toLocalDateKey(new Date(meal.date)));
+    setEditDate(String(meal.date || '').slice(0, 10) || toLocalDateKey(new Date()));
     setEditMealType(meal.mealType || 'Dinner');
     setOpenMenuId(null);
   };

@@ -10,16 +10,29 @@ router.use(authenticate);
 
 router.get('/', async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const nextWeek = new Date(today);
-    nextWeek.setDate(today.getDate() + 7);
+    const requestedStart = String(req.query.weekStart || '').trim();
+    if (requestedStart && !/^\d{4}-\d{2}-\d{2}$/.test(requestedStart)) {
+      return res.status(400).json({ error: 'Choose a valid week start date' });
+    }
+    let startKey = requestedStart;
+    if (!startKey) {
+      const today = new Date();
+      const weekday = today.getUTCDay();
+      today.setUTCDate(today.getUTCDate() - (weekday === 0 ? 6 : weekday - 1));
+      startKey = today.toISOString().slice(0, 10);
+    }
+    const start = new Date(`${startKey}T00:00:00.000Z`);
+    if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== startKey) {
+      return res.status(400).json({ error: 'Choose a valid week start date' });
+    }
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 7);
 
     const menu = await prisma.weeklyMenu.findMany({
       where: {
         userId: req.user.id,
         familyId: null, // Personal menu
-        date: { gte: today, lt: nextWeek }
+        date: { gte: start, lt: end }
       },
       include: { recipe: true }
     });
@@ -33,16 +46,17 @@ router.post('/', async (req, res) => {
   try {
     const { recipeId, date } = req.body;
     const parsedRecipeId = Number.parseInt(recipeId, 10);
-    const targetDate = new Date(date);
-    if (!Number.isInteger(parsedRecipeId) || Number.isNaN(targetDate.getTime())) return res.status(400).json({ error: 'Choose a recipe and valid date' });
+    const dateKey = String(date || '').slice(0, 10);
+    if (!Number.isInteger(parsedRecipeId) || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return res.status(400).json({ error: 'Choose a recipe and valid date' });
+    const targetDate = new Date(`${dateKey}T00:00:00.000Z`);
+    if (Number.isNaN(targetDate.getTime()) || targetDate.toISOString().slice(0, 10) !== dateKey) return res.status(400).json({ error: 'Choose a recipe and valid date' });
     
-    const day = targetDate.getDay(); // 0=Sun, 1=Mon...
+    const day = targetDate.getUTCDay(); // 0=Sun, 1=Mon...
     const diff = day === 0 ? -6 : 1 - day; // adjust to Monday
     const weekStart = new Date(targetDate);
-    weekStart.setDate(targetDate.getDate() + diff);
-    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setUTCDate(targetDate.getUTCDate() + diff);
     const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 7);
+    weekEnd.setUTCDate(weekStart.getUTCDate() + 7);
 
     const duplicate = await prisma.weeklyMenu.findFirst({
       where: {
@@ -55,8 +69,6 @@ router.post('/', async (req, res) => {
     if (duplicate) {
       return res.status(409).json({ error: 'This recipe is already planned for this week.' });
     }
-
-    targetDate.setHours(0, 0, 0, 0);
 
     const item = await prisma.weeklyMenu.create({
       data: {

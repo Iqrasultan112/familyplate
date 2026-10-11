@@ -1101,7 +1101,7 @@ const favoriteScore = (recipe, favoriteTerms = []) => {
 const normalizeRecipeName = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const normalizeRecipePhotoName = value => normalizeRecipeName(value)
   .split(/\s+/)
-  .filter(word => !['recipe', 'quick', 'easy', 'simple', 'classic', 'family', 'style', 'homemade', 'traditional', 'authentic', 'for', 'with', 'a', 'the', 'celebration', 'everyday', 'meal', 'dish', 'mild', 'spicy', 'desi', 'special', 'best', 'delicious'].includes(word))
+  .filter(word => !['recipe', 'quick', 'easy', 'simple', 'classic', 'family', 'style', 'homemade', 'traditional', 'authentic', 'for', 'with', 'a', 'the', 'and', 'of', 'celebration', 'everyday', 'meal', 'dish', 'mild', 'spicy', 'desi', 'special', 'best', 'delicious'].includes(word))
   .map(word => ({ pilau: 'pulao', pilaf: 'pulao', pulao: 'pulao', eggs: 'egg', tomatoes: 'tomato', onions: 'onion' }[word] || word))
   .sort()
   .join(' ');
@@ -1122,7 +1122,7 @@ const findMealDbPhoto = async name => {
 
 const findCommonsRecipePhoto = async name => {
   try {
-    const ignored = new Set(['recipe', 'quick', 'easy', 'simple', 'classic', 'family', 'style', 'homemade', 'traditional', 'authentic', 'for', 'with', 'a', 'the', 'celebration', 'everyday', 'meal', 'dish', 'mild', 'spicy', 'desi', 'special', 'best', 'delicious', 'and', 'of']);
+    const ignored = new Set(['recipe', 'quick', 'easy', 'simple', 'classic', 'family', 'style', 'homemade', 'traditional', 'authentic', 'for', 'with', 'a', 'the', 'and', 'of', 'celebration', 'everyday', 'meal', 'dish', 'mild', 'spicy', 'desi', 'special', 'best', 'delicious']);
     const normalize = value => normalizeRecipeName(value).split(/\s+/).filter(Boolean)
       .filter(word => !ignored.has(word))
       .map(word => ({ pilau: 'pulao', pilaf: 'pulao', qeema: 'keema', daal: 'dal', lentils: 'lentil', eggs: 'egg', tomatoes: 'tomato', onions: 'onion' }[word] || word));
@@ -1140,7 +1140,7 @@ const findCommonsRecipePhoto = async name => {
       const titleTerms = new Set(normalize(page.title));
       const matched = terms.filter(term => titleTerms.has(term)).length;
       return { ...page, score: matched / terms.length, matched };
-    }).filter(page => page.matched >= Math.min(terms.length, 2) && page.score >= 0.5)
+    }).filter(page => page.matched === terms.length)
       .sort((a, b) => b.score - a.score || b.matched - a.matched).slice(0, 5);
     if (!candidates.length) return null;
     const imageInfo = new URLSearchParams({
@@ -1187,9 +1187,9 @@ const findOpenverseRecipePhoto = async name => {
       const normalizeWords = value => normalizeRecipePhotoName(value).split(/\s+/).filter(Boolean);
       const match = results.find(item => {
         const titleAndTags = new Set(normalizeWords(`${item.title || ''} ${(item.tags || []).map(tag => tag.name).join(' ')}`));
-        const coreMatches = core.filter(word => titleAndTags.has(word)).length;
-        const hasMealSignal = /food|meal|dish|recipe|cuisine|cooking/i.test(`${item.title || ''} ${(item.tags || []).map(tag => tag.name).join(' ')}`);
-        return core.length >= 2 ? coreMatches === core.length : (coreMatches >= 1 && hasMealSignal);
+        // Do not attach a merely similar dish. Every distinctive word from the
+        // recipe name must appear in the indexed title or tags.
+        return words.every(word => titleAndTags.has(word));
       });
       const image = match?.thumbnail || match?.url;
       if (image && /^https:\/\//i.test(image) && (/\.(jpe?g|png|webp)(?:\?|$)/i.test(image) || /api\.openverse\.org\/v1\/images\/[^/]+\/thumb\/?$/i.test(image))) {
@@ -1210,8 +1210,13 @@ const findOpenverseRecipePhoto = async name => {
   } catch { return null; }
 };
 const findRecipePhoto = async name => {
-  const [mealDb, openverse, commons] = await Promise.all([findMealDbPhoto(name), findOpenverseRecipePhoto(name), findCommonsRecipePhoto(name)]);
-  return mealDb || openverse || commons;
+  // Prefer a database recipe whose title is an exact normalized match. Use
+  // public photo indexes only when they identify every meaningful title term.
+  const mealDb = await findMealDbPhoto(name);
+  if (mealDb) return mealDb;
+  const openverse = await findOpenverseRecipePhoto(name);
+  if (openverse) return openverse;
+  return findCommonsRecipePhoto(name);
 };
 const fetchMealDbRecipes = async ({ ingredients, occasion, targetServings, avoidList, preferences, excludedNames = [] }) => {
   const baseUrl = 'https://www.themealdb.com/api/json/v1/1';

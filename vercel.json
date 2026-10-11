@@ -4,7 +4,13 @@
     "familyplate-web": {
       "root": "client",
       "framework": "vite",
-      "buildCommand": "npm ci && npm run build"
+      "buildCommand": "npm ci && npm run build",
+      "rewrites": [
+        {
+          "source": "/(.*)",
+          "destination": "/index.html"
+        }
+      ]
     },
     "familyplate-api": {
       "root": "server",
