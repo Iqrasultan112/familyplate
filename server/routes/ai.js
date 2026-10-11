@@ -640,7 +640,6 @@ HOUSEHOLD CONTEXT (JSON):\n${JSON.stringify(context)}\n\nCurrent user message: $
       if (invalidReasons.length) throw new Error(`Model recipe rejected: ${invalidReasons.join(', ')}`);
     } catch (aiError) {
       console.warn(`Meal chat model unavailable or rejected: ${aiError.message}`);
-      if (!fastPantryMatch && aiConfig()?.provider !== 'ollama') throw aiError;
       const previousMeals = new Set(recentHistory.filter(item => ['completed', 'cooked'].includes(String(item.status || '').toLowerCase())).map(item => normalizeRecipeName(item.meal)));
       if (asksForDifferentMeal) previouslySuggestedNames.forEach(name => previousMeals.add(name));
       for (const recipe of RECIPE_DATABASE) if (conversation.some(turn => turn.role === 'assistant' && String(turn.content || '').toLowerCase().includes(recipe.name.toLowerCase()))) previousMeals.add(normalizeRecipeName(recipe.name));
@@ -718,7 +717,7 @@ HOUSEHOLD CONTEXT (JSON):\n${JSON.stringify(context)}\n\nCurrent user message: $
       return res.json({
         reply: fastPantryMatch
           ? `Got it${choiceNotes ? ` — ${choiceNotes}` : ''}. ${recipe.name} fits your pantry${alternatives.length ? `; another option is ${alternatives.join(' or ')}` : ''}.`
-          : `Local AI is taking too long, so I matched this suggestion to your pantry and recent meals${alternatives.length ? `. Other options: ${alternatives.join(' or ')}` : ''}.`,
+          : `I matched this idea to your pantry${alternatives.length ? ` and have ${alternatives.join(' or ')} as alternatives` : ''}.`,
         recipes: [{
           ...recipe,
           image: fallbackPhoto?.image || null,
