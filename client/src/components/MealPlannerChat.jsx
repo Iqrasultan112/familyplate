@@ -1,17 +1,22 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, ChefHat, Clock3, LoaderCircle, MessageCircle, Mic, MicOff, Plus, Send, Sparkles, Volume2, Vote, X } from 'lucide-react';
+import { Bot, ChefHat, Clock3, LoaderCircle, Mic, MicOff, Plus, Send, ShoppingCart, Sparkles, Volume2, Vote, X } from 'lucide-react';
 import api from '../lib/api';
 import RecipePhoto from './RecipePhoto';
+import useAuthStore from '../store/authStore';
+import toast from 'react-hot-toast';
+import { sameIngredient } from '../lib/foodMatching';
+import { addMissingRecipeIngredients } from '../lib/addMissingRecipeIngredients';
 
 const intro = {
   role: 'assistant',
-  content: 'What would you like to eat today? Tell me what you feel like, how much time you have, or what ingredients are at home. You can change your mind anytime. Ask “show me the full recipe” for ingredients and cooking steps.',
+  content: 'Assalam-o-alaikum! What should we cook today? Tell me what is in your pantry, how much time you have, or what your family feels like eating.',
   recipes: []
 };
-const quickPrompts = ['I need something ready in 30 minutes', 'No potatoes today', 'Suggest something comforting for a rainy day'];
+const quickPrompts = ['Ready in 30 minutes', 'Use what is in my pantry', 'Suggest a Pakistani dinner'];
 
-export default function MealPlannerChat({ family, servings = 4, onSendToVote, compact = false, onClose }) {
-  const storageKey = useMemo(() => family?.id ? `familyplate:meal-chat:${family.id}` : null, [family?.id]);
+export default function MealPlannerChat({ family, servings = 4, onSendToVote, compact = false, onClose, showPeopleControl = false, familyName = '', onServingsChange }) {
+  const { user } = useAuthStore();
+  const storageKey = useMemo(() => `familyplate:meal-chat:${family?.id || `personal:${user?.id || 'guest'}`}`, [family?.id, user?.id]);
   const [messages, setMessages] = useState([intro]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -20,10 +25,15 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
   const [transcribing, setTranscribing] = useState(false);
   const [voiceLanguage, setVoiceLanguage] = useState('ur-PK');
   const [voiceError, setVoiceError] = useState('');
+  const [pantryIsEmpty, setPantryIsEmpty] = useState(false);
+  const [addingShoppingFor, setAddingShoppingFor] = useState('');
+  const [addingPlanFor, setAddingPlanFor] = useState('');
+  const [plannedRecipes, setPlannedRecipes] = useState({});
+  const [planMealType, setPlanMealType] = useState('Dinner');
   const mediaRecorderRef = useRef(null);
   const microphoneStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
-  const conversationEndRef = useRef(null);
+  const conversationContainerRef = useRef(null);
   const latestAssistantRef = useRef(null);
   const composerInputRef = useRef(null);
 
@@ -40,6 +50,15 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
     try { localStorage.setItem(storageKey, JSON.stringify(messages.slice(-30))); } catch { /* chat remains available for this visit */ }
   }, [messages, storageKey]);
 
+  useEffect(() => {
+    if (family?.id) { setPantryIsEmpty(false); return; }
+    let active = true;
+    api.get('/inventory')
+      .then(({ data }) => { if (active) setPantryIsEmpty(!Array.isArray(data) || data.length === 0); })
+      .catch(() => {})
+    return () => { active = false; };
+  }, [family?.id]);
+
   useEffect(() => () => {
     if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
     microphoneStreamRef.current?.getTracks().forEach(track => track.stop());
@@ -47,11 +66,15 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
   }, []);
 
   useEffect(() => {
-    if (messages.at(-1)?.role === 'assistant') {
-      latestAssistantRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return;
+    const container = conversationContainerRef.current;
+    if (!container || (messages.length <= 1 && !sending)) return;
+    if (messages.at(-1)?.role === 'assistant' && latestAssistantRef.current) {
+      const containerTop = container.getBoundingClientRect().top;
+      const answerTop = latestAssistantRef.current.getBoundingClientRect().top;
+      container.scrollTo({ top: container.scrollTop + answerTop - containerTop - 12, behavior: 'smooth' });
+    } else {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
     }
-    conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, sending]);
 
   const startVoiceInput = async () => {
@@ -127,7 +150,7 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
 
   const send = async (text = draft, speakReply = false) => {
     const content = String(text || '').trim();
-    if (!content || !family?.id || sending) return;
+    if (!content || sending) return;
     const history = messages.filter((item, index) => !(index === 0 && item.role === 'assistant' && item.content === intro.content)).slice(-10);
     const currentRecipe = [...messages].reverse().find(item => item.role === 'assistant' && item.recipes?.length)?.recipes?.[0] || null;
     const nextMessages = [...messages, { role: 'user', content }];
@@ -137,7 +160,7 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
     setSending(true);
     try {
       const { data } = await api.post('/ai/meal-chat', {
-        familyId: family.id,
+        ...(family?.id ? { familyId: family.id } : {}),
         servings,
         message: content,
         history: history.map(item => ({ role: item.role, content: item.content, recipes: (item.recipes || []).map(recipe => recipe.name).filter(Boolean) })),
@@ -150,6 +173,7 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
         menuAction: data.menuAction || null,
         historyUsed: data.historyUsed
       }]);
+      setPantryIsEmpty(Boolean(data.pantryEmpty));
       if (speakReply) readAloud(data.reply || 'Here is an idea for your meal.');
     } catch (error) {
       setMessages(current => [...current, {
@@ -173,19 +197,85 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
     finally { setVotingRecipe(''); }
   };
 
+  const addMissingToShoppingList = async recipe => {
+    const missing = (recipe.ingredients || []).filter(item => item.inPantry === false);
+    if (!missing.length) return 0;
+    setAddingShoppingFor(recipe.name);
+    try {
+      const { data: currentItems } = await api.get('/shopping');
+      const pendingNames = (Array.isArray(currentItems) ? currentItems : [])
+        .filter(item => !item.isPurchased)
+        .map(item => item.ingredient);
+      const items = missing
+        .filter(item => !pendingNames.some(name => sameIngredient(name, item.name)))
+        .map(item => ({ ingredient: item.name, quantity: item.quantity || '1' }));
+      if (items.length) await api.post('/shopping/bulk', { items });
+      return items.length;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Could not update your shopping list.');
+    } finally { setAddingShoppingFor(''); }
+  };
+
+  const addRecipeToToday = async (recipe, recipeKey) => {
+    const planKey = `${recipeKey}:${planMealType}`;
+    if (plannedRecipes[planKey] || addingPlanFor) return;
+    setAddingPlanFor(planKey);
+    try {
+      const ingredients = (recipe.ingredients || []).map(item => typeof item === 'string'
+        ? { name: item, quantity: 'Not specified' }
+        : { name: item.name || item.ingredient || '', quantity: item.quantity || item.amount || 'Not specified' });
+      const instructions = (recipe.instructions || []).map(step => String(step || '').trim()).filter(Boolean);
+      if (!instructions.length) throw new Error('Ask me to show the full recipe before adding it to your plan.');
+      const { data: savedRecipe } = await api.post('/recipes', {
+        name: recipe.name,
+        ingredients,
+        instructions,
+        prepTime: recipe.prepTime || 'Not specified',
+        cookTime: recipe.cookTime || 'Not specified',
+        servings: String(recipe.servings || servings),
+        image: recipe.image || null,
+        sourceUrl: recipe.sourceUrl || null,
+        nutrition: recipe.nutrition || null
+      });
+      const now = new Date();
+      const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      await api.post('/weeklyMenu', {
+        recipeId: savedRecipe.id,
+        date,
+        mealType: planMealType,
+        servings: Number.parseInt(recipe.servings, 10) || servings,
+        ...(family?.id ? { familyId: family.id } : {})
+      });
+      setPlannedRecipes(previous => ({ ...previous, [planKey]: true }));
+      let shoppingCount = 0;
+      try { shoppingCount = await addMissingRecipeIngredients(savedRecipe.id); }
+      catch (error) { toast.error(error.response?.data?.error || 'The meal was planned, but missing items could not be added to your shopping list.'); }
+      toast.success(`${recipe.name} added to today’s ${planMealType.toLowerCase()}${shoppingCount ? `; ${shoppingCount} missing item${shoppingCount === 1 ? '' : 's'} added to your shopping list` : ''}.`);
+    } catch (error) {
+      toast.error(error.response?.data?.error || error.message || 'Could not add this recipe to today’s plan.');
+    } finally { setAddingPlanFor(''); }
+  };
+
   return (
     <section className={`flex min-h-0 flex-col overflow-hidden bg-transparent ${compact ? 'h-full' : 'flex-1'}`} aria-labelledby="meal-chat-title">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-primary-200 px-3 py-2 sm:px-4">
-        <h2 id="meal-chat-title" className="text-base font-bold text-primary-950 sm:text-lg">Your personal chat assistant</h2>
+      {showPeopleControl ? (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-primary-200 bg-white px-4 py-2 sm:px-6">
+          <div className="min-w-0"><h2 id="meal-chat-title" className="text-sm font-bold text-primary-950">Meal helper · Aaj kya pakayen?</h2><p className="truncate text-xs text-primary-600">{familyName || family?.name || 'Your kitchen'}</p></div>
+          <div className="flex shrink-0 items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-primary-800" htmlFor="chat-servings">People<input id="chat-servings" type="number" min="1" max="30" value={servings} onChange={onServingsChange} className="input min-h-8 w-12 px-1 py-1 text-center text-sm" /></label>
+            <button type="button" onClick={reset} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-primary-800 transition hover:bg-primary-50" aria-label="Start a new chat"><Plus className="h-4 w-4" /> New chat</button>
+          </div>
+        </div>
+      ) : <div className="flex shrink-0 items-center justify-between gap-3 border-b border-primary-200 px-3 py-2 sm:px-4">
+        <h2 id="meal-chat-title" className="text-base font-bold text-primary-950 sm:text-lg">Meal chat</h2>
         <div className="flex shrink-0 items-center gap-1">
-          <button type="button" onClick={reset} className="inline-flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-primary-800 transition hover:bg-primary-50" aria-label="Start a new chat">
-            <Plus className="h-5 w-5" /> New chat
-          </button>
+          <button type="button" onClick={reset} className="inline-flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-primary-800 transition hover:bg-primary-50" aria-label="Start a new chat"><Plus className="h-5 w-5" /> New chat</button>
           {onClose && <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl text-primary-700 transition hover:bg-primary-50" aria-label="Close meal chat"><X className="h-5 w-5" /></button>}
         </div>
-      </div>
+      </div>}
 
-      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-[#fffdfa] p-4 sm:p-7" aria-live="polite" aria-relevant="additions">
+      <div ref={conversationContainerRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain bg-[#fffdfa] p-3 sm:p-4" aria-live="polite" aria-relevant="additions">
+        {pantryIsEmpty && <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">Your pantry is empty. I can still suggest meals; use <strong>Add missing items to shopping list</strong> on a recipe to get what you need.</p>}
         {messages.map((message, index) => (
           <div ref={index === messages.length - 1 && message.role === 'assistant' ? latestAssistantRef : undefined} key={index + '-' + message.role} className={'scroll-mt-4 flex items-start gap-3 ' + (message.role === 'user' ? 'justify-end' : 'justify-start')}>
             {message.role === 'assistant' && <div className="mt-6 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary-800 text-white shadow-sm"><Bot className="h-5 w-5" /></div>}
@@ -195,8 +285,11 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
                 <p className="whitespace-pre-wrap break-words text-[15px] leading-7">{message.content}</p>
                 {message.role === 'assistant' && <button type="button" onClick={() => readAloud(message.content)} className="mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-primary-700 hover:bg-primary-50" aria-label="Read this answer aloud"><Volume2 className="h-4 w-4" /> Read aloud</button>}
               </div>
-              {(message.recipes || []).map((recipe, recipeIndex) => (
-                <article key={recipe.name + '-' + recipeIndex} className="overflow-hidden rounded-2xl border border-primary-200 bg-white text-primary-950 shadow-card">
+              {(message.recipes || []).map((recipe, recipeIndex) => {
+                const recipeKey = `${index}-${recipeIndex}`;
+                const planKey = `${recipeKey}:${planMealType}`;
+                const canAddToPlan = !family?.id || user?.role === 'maker' || family?.creatorId === user?.id;
+                return <article key={recipe.name + '-' + recipeIndex} className="overflow-hidden rounded-2xl border border-primary-200 bg-white text-primary-950 shadow-card">
                   <RecipePhoto recipe={recipe} alt={recipe.name} loading="lazy" className="h-44 w-full object-cover sm:h-52" />
                   <div className="flex items-center gap-2 border-b border-primary-200 bg-primary-50 px-4 py-3"><ChefHat className="h-5 w-5 text-primary-800" /><h3 className="text-sm font-bold text-primary-950">Meal idea{message.recipes.length > 1 ? ' ' + (recipeIndex + 1) : ''}</h3></div>
                   <div className="p-4 sm:p-5">
@@ -204,38 +297,46 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
                       <div><h4 className="text-lg font-bold">{recipe.name}</h4>{recipe.description && <p className="mt-1 text-base leading-6 text-primary-800">{recipe.description}</p>}</div>
                       <span className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-2 text-sm font-semibold text-primary-900"><Clock3 className="h-4 w-4" />{recipe.prepTime || 'Prep n/a'} + {recipe.cookTime || 'Cook n/a'}</span>
                     </div>
-                    {Number.isFinite(recipe.pantryCoverage) && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-950">{recipe.pantryCoverage}% of ingredients are at home{recipe.missingIngredients?.length ? '. You may need: ' + recipe.missingIngredients.join(', ') : '. You have everything listed.'}</p>}
+                    {Number.isFinite(recipe.pantryCoverage) && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-950">{pantryIsEmpty ? 'Your pantry is empty, so all listed ingredients need to be bought.' : `${recipe.pantryCoverage}% of ingredients are at home${recipe.missingIngredients?.length ? '. You may need: ' + recipe.missingIngredients.join(', ') : '. You have everything listed.'}`}</p>}
                     <div className="mt-4"><p className="text-base font-bold text-primary-950">Ingredients <span className="font-normal text-primary-700">for {recipe.servings || servings} people</span></p>
                       <ul className="mt-2 grid gap-2 sm:grid-cols-2">{(recipe.ingredients || []).map((ingredient, ingredientIndex) => <li key={ingredient.name + '-' + ingredientIndex} className="flex min-h-11 items-center justify-between gap-3 rounded-lg bg-primary-50 px-3 py-2 text-sm"><span className="font-medium">{ingredient.name} · {ingredient.quantity}</span><span className={'shrink-0 text-xs font-bold ' + (ingredient.inPantry ? 'text-emerald-900' : 'text-amber-900')}>{ingredient.inPantry ? 'At home' : 'Need to get'}</span></li>)}</ul>
                     </div>
                     {(recipe.instructions || []).length > 0 && <details className="mt-4 rounded-xl border border-primary-200"><summary className="cursor-pointer px-4 py-3 text-base font-semibold text-primary-900">Cooking steps <span className="text-sm font-normal text-primary-700">(tap to open)</span></summary><ol className="list-decimal space-y-2 border-t border-primary-100 px-4 py-3 pl-9 text-base leading-7">{recipe.instructions.map((step, stepIndex) => <li key={stepIndex}>{step}</li>)}</ol></details>}
+                    {(recipe.ingredients || []).some(item => item.inPantry === false) && <button type="button" onClick={() => addMissingToShoppingList(recipe)} disabled={Boolean(addingShoppingFor)} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl border border-primary-300 bg-white px-4 py-2 text-sm font-semibold text-primary-900 hover:bg-primary-50 disabled:opacity-60"><ShoppingCart className="h-4 w-4" />{addingShoppingFor === recipe.name ? 'Adding…' : 'Add missing items to shopping list'}</button>}
                     {recipe.nutrition && <p className="mt-3 text-sm leading-6 text-primary-700">Per serving: {recipe.nutrition.calories} calories · Protein {recipe.nutrition.proteinG} g · Carbs {recipe.nutrition.carbsG} g · Fat {recipe.nutrition.fatG} g</p>}
                     {message.menuAction?.status === 'added' && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-900">Added to your menu: {message.menuAction.date} · {message.menuAction.mealType}</p>}
+                    {canAddToPlan && <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-primary-100 pt-4">
+                      <label htmlFor={`meal-slot-${recipeKey}`} className="text-sm font-semibold text-primary-900">Add to today’s</label>
+                      <select id={`meal-slot-${recipeKey}`} value={planMealType} onChange={event => setPlanMealType(event.target.value)} className="min-h-10 rounded-xl border border-primary-300 bg-white px-3 text-sm text-primary-950">
+                        {['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Side dish'].map(type => <option key={type} value={type}>{type}</option>)}
+                      </select>
+                      <button type="button" onClick={() => addRecipeToToday(recipe, recipeKey)} disabled={Boolean(addingPlanFor) || Boolean(plannedRecipes[planKey])} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary-800 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-900 disabled:cursor-not-allowed disabled:opacity-60">
+                        <Plus className="h-4 w-4" />{addingPlanFor === planKey ? 'Adding…' : plannedRecipes[planKey] ? `Added to ${planMealType.toLowerCase()}` : 'Add to today’s plan'}
+                      </button>
+                    </div>}
                     {onSendToVote && <button type="button" onClick={() => sendForVote(recipe)} disabled={Boolean(votingRecipe)} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary-800 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-900 disabled:opacity-60"><Vote className="h-4 w-4" />{votingRecipe === recipe.name ? 'Sending…' : 'Ask family to vote'}</button>}
                   </div>
-                </article>
-              ))}
+                </article>;
+              })}
             </div>
           </div>
         ))}
         {sending && <div className="flex items-center gap-3 pl-12 text-base font-medium text-primary-800"><LoaderCircle className="h-5 w-5 animate-spin" />Checking your pantry and meal history…</div>}
-        {messages.length <= 1 && <div className="pl-12"><p className="mb-2 text-sm font-semibold text-primary-700">Start with one of these, or type your own:</p><div className="flex flex-wrap gap-2">{quickPrompts.map(prompt => <button key={prompt} type="button" onClick={() => send(prompt)} disabled={!family?.id || sending} className="min-h-10 rounded-xl border border-primary-200 bg-white px-3 py-2 text-left text-sm font-semibold text-primary-900 shadow-sm hover:border-primary-400 hover:bg-primary-50 disabled:opacity-50"><Sparkles className="mr-1.5 inline h-4 w-4 text-primary-700" />{prompt}</button>)}</div></div>}
-        {messages.length > 1 && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.error && !sending && <div className="pl-12"><p className="mb-2 text-xs font-semibold text-primary-600">Keep planning</p><div className="flex flex-wrap gap-2">{['Suggest something different', 'Make it quicker', 'Show the full recipe'].map(prompt => <button key={prompt} type="button" onClick={() => send(prompt)} disabled={!family?.id} className="min-h-9 rounded-lg border border-primary-200 bg-white px-3 py-1.5 text-sm font-semibold text-primary-800 hover:bg-primary-50 disabled:opacity-50">{prompt}</button>)}</div></div>}
-        <div ref={conversationEndRef} />
+        {messages.length <= 1 && <div className="pl-12"><p className="mb-2 text-sm font-semibold text-primary-700">Start with one of these, or type your own:</p><div className="flex flex-wrap gap-2">{quickPrompts.map(prompt => <button key={prompt} type="button" onClick={() => send(prompt)} disabled={sending} className="min-h-10 rounded-xl border border-primary-200 bg-white px-3 py-2 text-left text-sm font-semibold text-primary-900 shadow-sm hover:border-primary-400 hover:bg-primary-50 disabled:opacity-50"><Sparkles className="mr-1.5 inline h-4 w-4 text-primary-700" />{prompt}</button>)}</div></div>}
+        {messages.length > 1 && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.error && !sending && <div className="pl-12"><div className="flex flex-wrap gap-2">{['Another idea', 'Show full recipe'].map(prompt => <button key={prompt} type="button" onClick={() => send(prompt)} className="min-h-9 rounded-lg border border-primary-200 bg-white px-3 py-1.5 text-sm font-semibold text-primary-800 hover:bg-primary-50">{prompt}</button>)}</div></div>}
       </div>
 
-      <form onSubmit={event => { event.preventDefault(); send(); }} className="shrink-0 border-t border-primary-200 bg-[#fffaf5] p-3 sm:px-4 sm:pb-2 sm:pt-3">
+      <form onSubmit={event => { event.preventDefault(); send(); }} className={'shrink-0 bg-[#fffaf5] ' + (compact ? 'border-t border-primary-200 p-2 sm:px-3 sm:pb-2 sm:pt-2' : 'border-t border-primary-200 px-3 pb-3 pt-2 sm:px-6')}>
         <label htmlFor="meal-planner-message" className="sr-only">Your message</label>
-        <div className="rounded-2xl border border-primary-200 bg-[#fffdfa] p-3 shadow-sm focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-100">
-        <textarea ref={composerInputRef} id="meal-planner-message" rows={1} value={draft} onChange={event => { setDraft(event.target.value); event.target.style.height = '56px'; event.target.style.height = `${Math.min(event.target.scrollHeight, 144)}px`; }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } }} disabled={!family?.id || sending} placeholder="Tell me what you want, what to avoid, or how much time you have…" className="meal-chat-input block max-h-36 min-h-14 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-2 text-base leading-6 text-primary-950 placeholder:text-primary-500 focus:outline-none focus:ring-0 disabled:opacity-50" />
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-primary-100 pt-2">
-          <div className="flex items-center gap-2"><label className="sr-only" htmlFor="meal-voice-language">Voice language</label><select id="meal-voice-language" value={voiceLanguage} onChange={event => setVoiceLanguage(event.target.value)} disabled={listening || transcribing} className="input min-h-11 w-auto bg-white px-3 text-sm" aria-label="Voice language"><option value="ur-PK">Urdu voice</option><option value="hi-IN">Hindi voice</option><option value="en-IN">English voice</option></select><button type="button" onClick={listening ? () => mediaRecorderRef.current?.stop?.() : startVoiceInput} disabled={!family?.id || sending || transcribing} className={'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold ' + (listening ? 'border-rose-300 bg-rose-50 text-rose-900' : 'border-primary-300 bg-white text-primary-900') + ' disabled:opacity-50'} aria-label={listening ? 'Stop voice input' : 'Speak your message'}>{listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}<span>{listening ? 'Stop' : transcribing ? 'Transcribing…' : 'Speak'}</span></button></div>
-          <button type="submit" disabled={!draft.trim() || !family?.id || sending} className="btn-primary min-h-11 px-4"><Send className="h-4 w-4" /><span className="hidden sm:inline">Send</span></button>
+        <div className={compact ? 'rounded-xl border border-primary-200 bg-[#fffdfa] p-2 shadow-sm focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-100' : 'mx-auto w-full max-w-5xl rounded-2xl border border-primary-200 bg-[#fffdfa] px-3 pt-2 pb-2 shadow-[0_-5px_18px_rgba(72,37,28,0.05)] focus-within:border-primary-400 sm:px-4'}>
+        <textarea ref={composerInputRef} id="meal-planner-message" rows={1} value={draft} onChange={event => { setDraft(event.target.value); event.target.style.height = '44px'; event.target.style.height = `${Math.min(event.target.scrollHeight, 120)}px`; }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } }} disabled={sending} placeholder="Tell me what you want, what to avoid, or how much time you have…" className="meal-chat-input block max-h-[120px] min-h-11 w-full resize-none overflow-y-auto border-0 bg-transparent px-2 py-1.5 text-sm leading-5 text-primary-950 placeholder:text-primary-500 focus:outline-none focus:ring-0 disabled:opacity-50" />
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-2 border-t border-primary-100 pt-1.5">
+          <div className="flex items-center gap-1.5"><label className="sr-only" htmlFor="meal-voice-language">Voice language</label><select id="meal-voice-language" value={voiceLanguage} onChange={event => setVoiceLanguage(event.target.value)} disabled={listening || transcribing} className="input min-h-9 w-auto bg-white px-2 text-xs" aria-label="Voice language"><option value="ur-PK">Urdu voice</option><option value="hi-IN">Hindi voice</option><option value="en-IN">English voice</option></select><button type="button" onClick={listening ? () => mediaRecorderRef.current?.stop?.() : startVoiceInput} disabled={sending || transcribing} className={'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-semibold ' + (listening ? 'border-rose-300 bg-rose-50 text-rose-900' : 'border-primary-300 bg-white text-primary-900') + ' disabled:opacity-50'} aria-label={listening ? 'Stop voice input' : 'Speak your message'}>{listening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}<span>{listening ? 'Stop' : transcribing ? 'Transcribing…' : 'Speak'}</span></button></div>
+          <button type="submit" disabled={!draft.trim() || sending} className="btn-primary min-h-9 px-3 text-sm"><Send className="h-3.5 w-3.5" /><span className="hidden sm:inline">Send</span></button>
         </div>
         </div>
       </form>
       {voiceError && <p role="status" className="px-4 pb-2 text-xs text-amber-800">{voiceError}</p>}
-      {!family?.id && <p className="flex items-center gap-2 px-4 pb-3 text-xs text-amber-800"><MessageCircle className="h-4 w-4" />Join or create a family to use its private pantry and meal history.</p>}
     </section>
   );
 }

@@ -112,8 +112,8 @@ export default function Inventory() {
       {/* Header */}
       <div className="page-heading flex items-center justify-between">
         <div>
-          <h1 className="page-title">Kitchen Stock</h1>
-          <p className="page-subtitle">Track ingredients available in your pantry</p>
+          <h1 className="page-title">Ghar ka rashan · Kitchen stock</h1>
+          <p className="page-subtitle">Add what’s in your kitchen so meal ideas can use it.</p>
         </div>
         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-card">
           <Package className="w-4 h-4 text-primary-500" />
@@ -124,15 +124,16 @@ export default function Inventory() {
 
       {/* Add form */}
       <div className="card p-5">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Add Ingredient</p>
+        <p className="text-sm font-bold text-slate-800 mb-1">What do you have at home?</p>
+        <p className="text-xs text-slate-600 mb-3">Misal: atta, chawal, daal, anday, tamatar</p>
         <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-2">
           <input
-            type="text" required placeholder="Ingredient name (e.g. Flour, Tomatoes)"
+            type="text" required placeholder="Item name · cheez ka naam (e.g. atta, chawal)"
             className="input flex-1"
             value={addName} onChange={e => setAddName(e.target.value)}
           />
           <input
-            type="text" required placeholder="Quantity (e.g. 500g, 6 eggs)"
+            type="text" required placeholder="How much? (e.g. 1 kg, 6 eggs)"
             className="input sm:w-36"
             value={addQty} onChange={e => setAddQty(e.target.value)}
           />
@@ -140,13 +141,17 @@ export default function Inventory() {
             {adding
               ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               : <Plus className="w-4 h-4" />}
-            Add Item
+            Add to kitchen
           </button>
         </form>
       </div>
 
-      <section className="card space-y-4 p-5" aria-labelledby="bulk-import-title">
-        <div><h2 id="bulk-import-title" className="font-bold text-slate-900">Add a whole grocery shop</h2><p className="mt-1 text-sm text-slate-600">Paste your shopping list or choose a clear photo of the bill. Check every item before it goes into your pantry.</p></div>
+      <details className="card group p-5" aria-labelledby="bulk-import-title">
+        <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center justify-between gap-3"><span><span id="bulk-import-title" className="block font-bold text-slate-900">Adding a big grocery shop?</span><span className="mt-1 block text-sm text-slate-600">Open this if you want to paste a list or read a bill photo.</span></span><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary-50 text-primary-700"><Plus className="h-4 w-4 transition-transform group-open:rotate-45" /></span></span>
+        </summary>
+        <div className="mt-4 space-y-4 border-t border-primary-100 pt-4">
+        <div><h2 className="font-bold text-slate-900">Add a whole grocery shop</h2><p className="mt-1 text-sm text-slate-600">Paste your shopping list or choose a clear photo of the bill. Check every item before it goes into your pantry.</p></div>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <label htmlFor="grocery-list" className="text-sm font-semibold text-slate-700">Paste a list</label>
@@ -165,13 +170,14 @@ export default function Inventory() {
           <button type="button" className="btn-ghost text-sm" onClick={() => setImportItems(list => [...list, { ingredient: '', quantity: '' }])}><Plus className="h-4 w-4" /> Add a missed item</button>
           <button type="button" onClick={saveImportedItems} disabled={savingImport} className="btn-primary">{savingImport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{savingImport ? 'Adding items…' : 'Add reviewed items to pantry'}</button>
         </div>}
-      </section>
+        </div>
+      </details>
 
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
         <input
-          type="text" placeholder="Search pantry…"
+          type="text" placeholder="Find an item · rashan mein dhoondein"
           className="input pl-10 bg-white"
           value={search} onChange={e => setSearch(e.target.value)}
         />

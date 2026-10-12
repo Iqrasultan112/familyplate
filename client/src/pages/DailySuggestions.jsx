@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import api from '../lib/api';
+import { addMissingRecipeIngredients } from '../lib/addMissingRecipeIngredients';
 import RecipePhoto from '../components/RecipePhoto';
 import useAuthStore from '../store/authStore';
 import toast from 'react-hot-toast';
@@ -37,7 +38,6 @@ export default function DailySuggestions() {
   const [aiUnavailable, setAiUnavailable] = useState(false);
 
   const { user } = useAuthStore();
-  const navigate = useNavigate();
 
   useEffect(() => {
     loadHousehold();
@@ -52,7 +52,7 @@ export default function DailySuggestions() {
       ]);
 
       const currentInv = invRes.data || [];
-      const currentFam = famRes.data?.family || famRes.data || null;
+      const currentFam = famRes.data?.family || (famRes.data?.id ? famRes.data : null);
 
       setInventory(currentInv);
       setFamily(currentFam);
@@ -97,12 +97,6 @@ export default function DailySuggestions() {
   };
 
   const handleSendToVote = async (recipe) => {
-    if (!family?.id) {
-      toast.error('Please join or create a family group first!');
-      navigate('/family');
-      return;
-    }
-
     setSendingId(recipe.name);
     try {
       // 1. First ensure recipe is in Recipe table if not already
@@ -124,19 +118,31 @@ export default function DailySuggestions() {
         throw new Error('Could not save this recipe for your family');
       }
 
-      // 2. Create Meal Request / Poll for the family
-      await api.post('/mealRequests', {
-        mealName: recipe.name,
-        recipeId,
-        familyId: family.id,
-        requestedDate: new Date().toISOString(),
-        message: `For ${recipe.servings || servings} people · ${recipe.matchPercentage || 0}% of ingredients are already at home.`
-      });
+      if (family?.id) {
+        await api.post('/mealRequests', {
+          mealName: recipe.name,
+          recipeId,
+          familyId: family.id,
+          requestedDate: new Date().toISOString(),
+          message: `For ${recipe.servings || servings} people · ${recipe.matchPercentage || 0}% of ingredients are already at home.`
+        });
+        toast.success(`Sent "${recipe.name}" to family for voting! 🗳️`);
+      } else {
+        const now = new Date();
+        const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        await api.post('/weeklyMenu', {
+          recipeId,
+          date,
+          mealType: recipe.category === 'Lunch' ? 'Lunch' : 'Dinner',
+          servings: recipe.servings || servings
+        });
+        const addedCount = await addMissingRecipeIngredients(recipeId).catch(() => 0);
+        toast.success(addedCount ? `Added to today's plan and ${addedCount} missing ingredients to your shopping list.` : 'Added to today’s personal meal plan.');
+      }
 
       setSentPolls(prev => ({ ...prev, [recipe.name]: true }));
-      toast.success(`Sent "${recipe.name}" to family for voting! 🗳️`);
     } catch (error) {
-      toast.error('Failed to send to voting');
+      toast.error(error.response?.data?.error || error.message || 'Could not add this meal to your plan');
     } finally {
       setSendingId(null);
     }
@@ -155,7 +161,7 @@ export default function DailySuggestions() {
       });
       toast.success(`Added ${missing.length} missing items to Shopping Cart! 🛒`);
     } catch (error) {
-      toast.error('Failed to add items to cart');
+      toast.error(error.response?.data?.error || 'Could not add ingredients to your shopping list');
     }
   };
 
@@ -183,7 +189,7 @@ export default function DailySuggestions() {
           <Link to="/family/meal-chat" className="btn-primary">
             <MessageCircle className="w-4 h-4" /> Chat about meals
           </Link>
-          {user?.role === 'maker' && <Link
+          {(!family?.id || user?.role === 'maker') && <Link
             to="/inventory"
             className="btn-secondary sm:ml-auto"
           >
@@ -268,7 +274,7 @@ export default function DailySuggestions() {
       {loadingHousehold ? (
         <div className="py-16 text-center space-y-4">
           <div className="w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-gray-700 font-medium">Getting your family and kitchen ready…</p>
+          <p className="text-gray-700 font-medium">Getting your kitchen ready…</p>
         </div>
       ) : loading ? (
         <div className="py-10 text-center space-y-3" role="status" aria-live="polite">
@@ -289,7 +295,7 @@ export default function DailySuggestions() {
             <p className="text-sm font-bold text-orange-700">STEP 2</p>
             <h2 id="meal-ideas-title" className="text-xl font-bold text-primary-950">Three ideas for {servings} people</h2>
           </div>
-          <p className="text-sm text-primary-600">Choose one to see the recipe or ask your family.</p>
+          <p className="text-sm text-primary-600">Choose a meal to add to your weekly plan{family?.id ? ' or send it to your family to vote' : ''}.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {suggestions.map((recipe, idx) => {
@@ -387,11 +393,11 @@ export default function DailySuggestions() {
                       'Sending...'
                     ) : isPollSent ? (
                       <>
-                        <CheckCircle className="w-4 h-4" /> Sent to family
+                        <CheckCircle className="w-4 h-4" /> {family?.id ? 'Sent to family' : 'Added to weekly plan'}
                       </>
                     ) : (
                       <>
-                        <Vote className="w-4 h-4" /> Ask family to choose
+                      {family?.id ? <><Vote className="w-4 h-4" /> Ask family to choose</> : <><ArrowRight className="w-4 h-4" /> Add to weekly plan</>}
                       </>
                     )}
                   </button>

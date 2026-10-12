@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import api from '../lib/api';
@@ -13,19 +13,12 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState(joinCodeParam ? 'member' : 'maker'); // 'maker' | 'member'
+  const [role, setRole] = useState(joinCodeParam ? 'member' : 'maker');
   const [joinCode, setJoinCode] = useState(joinCodeParam.toUpperCase());
   const [loading, setLoading] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (joinCodeParam) {
-      setRole('member');
-      setJoinCode(joinCodeParam.toUpperCase());
-    }
-  }, [joinCodeParam]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -46,17 +39,10 @@ export default function Register() {
       login(res.data.user, res.data.token);
       toast.success(`Welcome to FamilyPlate, ${name}! 🎉`);
 
-      if (role === 'maker') {
-        // Direct to Meal Maker Guided Onboarding (grocery upload -> family invite -> meal suggestions)
-        navigate('/onboarding/maker');
-      } else {
-        // Direct to Family Member Join & Preference Setup
-        if (joinCode.trim()) {
-          navigate(`/join?code=${joinCode.trim()}`);
-        } else {
-          navigate('/join');
-        }
-      }
+      // Family setup stays optional. A planner or member without an invite can
+      // start using their own account immediately.
+      if (joinCode.trim()) navigate(`/join?code=${encodeURIComponent(joinCode.trim())}`);
+      else navigate('/dashboard');
     } catch (error) {
       toast.error(error.response?.data?.error || error.response?.data?.message || 'Failed to register');
     } finally {
@@ -69,49 +55,27 @@ export default function Register() {
       {joinCodeParam && (
         <div className="bg-primary-50 border border-primary-200 rounded-xl p-3.5 text-sm text-primary-900 flex items-center gap-2.5 animate-fadeIn">
           <Users className="w-5 h-5 text-primary-600 shrink-0" />
-          <span>You’re joining a family space. Your invite is ready and we’ll help you finish setup after signup.</span>
+          <span>Your family invite is ready. You’ll join that family space after signup.</span>
         </div>
       )}
 
       <div>
         <h2 className="text-2xl font-bold tracking-tight text-gray-900">Create your account</h2>
-        <p className="mt-1 text-sm text-gray-600">Just a few details to get started.</p>
+        <p className="mt-1 text-sm text-gray-600">Choose how you’ll use FamilyPlate. You can start planning without setting up a family.</p>
       </div>
 
-      {!joinCodeParam && <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          aria-pressed={role === 'maker'}
-          onClick={() => setRole('maker')}
-          className={`flex min-h-[72px] w-full cursor-pointer items-center gap-2.5 rounded-xl border p-2.5 text-left transition-all relative ${
-            role === 'maker'
-              ? 'border-primary-600 bg-primary-50/70 shadow-sm'
-              : 'border-gray-200 bg-white hover:border-gray-300'
-          }`}
-        >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-100 text-orange-600">
-            <ChefHat className="h-4 w-4" />
-          </div>
-          <span className="min-w-0"><span className="block pr-4 text-xs font-bold leading-snug text-gray-900 sm:text-sm">Plan for my family</span><span className="mt-0.5 block text-[11px] leading-snug text-gray-600">Set up our kitchen</span></span>
-          {role === 'maker' && <CheckCircle className="absolute right-2 top-2 h-4 w-4 text-primary-600" />}
-        </button>
-
-        <button
-          type="button"
-          aria-pressed={role === 'member'}
-          onClick={() => setRole('member')}
-          className={`flex min-h-[72px] w-full cursor-pointer items-center gap-2.5 rounded-xl border p-2.5 text-left transition-all relative ${
-            role === 'member'
-              ? 'border-primary-600 bg-primary-50/70 shadow-sm'
-              : 'border-gray-200 bg-white hover:border-gray-300'
-          }`}
-        >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
-            <Users className="h-4 w-4" />
-          </div>
-          <span className="min-w-0"><span className="block pr-4 text-xs font-bold leading-snug text-gray-900 sm:text-sm">Join my family</span><span className="mt-0.5 block text-[11px] leading-snug text-gray-600">I have an invite</span></span>
-          {role === 'member' && <CheckCircle className="absolute right-2 top-2 h-4 w-4 text-primary-600" />}
-        </button>
+      {!joinCodeParam && <div className="grid grid-cols-2 gap-2" role="group" aria-label="Choose account type">
+        {[
+          { value: 'maker', title: 'Planner', detail: 'Plan meals for my home', Icon: ChefHat },
+          { value: 'member', title: 'Family member', detail: 'Join with an invite', Icon: Users },
+        ].map(({ value, title, detail, Icon }) => (
+          <button key={value} type="button" aria-pressed={role === value} onClick={() => setRole(value)}
+            className={`relative flex min-h-[72px] min-w-0 items-center gap-2.5 rounded-xl border p-2.5 text-left transition-colors ${role === value ? 'border-primary-600 bg-primary-50/70 shadow-sm' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-100 text-primary-700"><Icon className="h-4 w-4" /></span>
+            <span className="min-w-0"><span className="block pr-3 text-xs font-bold leading-snug text-gray-900 sm:text-sm">{title}</span><span className="mt-0.5 block text-[11px] leading-snug text-gray-600">{detail}</span></span>
+            {role === value && <CheckCircle className="absolute right-2 top-2 h-4 w-4 text-primary-600" />}
+          </button>
+        ))}
       </div>}
 
       <form className="grid grid-cols-1 gap-y-3.5" onSubmit={handleSubmit}>
@@ -169,10 +133,10 @@ export default function Register() {
           <p className="mt-1 text-[11px] text-gray-500">Use 8 or more characters.</p>
         </div>
 
-        {role === 'member' && (
+        {(role === 'member' || joinCodeParam) && (
           <div>
             <label className="label" htmlFor="joinCode">
-              Family invite <span className="text-gray-500 font-normal">(you can add this later)</span>
+              Family invite <span className="text-gray-500 font-normal">(optional)</span>
             </label>
             <input
               id="joinCode"
@@ -186,6 +150,8 @@ export default function Register() {
             />
           </div>
         )}
+
+        {role === 'member' && !joinCode && <p className="-mt-2 text-xs text-primary-600">You can join a family later. Your account will still open to your own meal planner.</p>}
 
         <button
           type="submit"

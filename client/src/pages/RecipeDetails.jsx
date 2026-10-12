@@ -18,6 +18,7 @@ import api from '../lib/api';
 import RecipePhoto from '../components/RecipePhoto';
 import DayPickerModal from '../components/DayPickerModal';
 import ShoppingIngredientsModal from '../components/ShoppingIngredientsModal';
+import { addMissingRecipeIngredients } from '../lib/addMissingRecipeIngredients';
 
 export default function RecipeDetails() {
   const { id } = useParams();
@@ -118,7 +119,15 @@ export default function RecipeDetails() {
       const famRes = await api.get('/family/mine');
       const family = famRes.data?.family || (Array.isArray(famRes.data?.families) ? famRes.data.families[0] : null);
       await api.post('/weeklyMenu', { recipeId: Number(id), date, mealType, familyId: family?.id });
-      toast.success(`Added ${recipe.name} to ${mealType} on ${new Date(`${date}T12:00:00`).toLocaleDateString()}!`);
+      const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString();
+      try {
+        const addedCount = await addMissingRecipeIngredients(id);
+        toast.success(addedCount
+          ? `Added ${recipe.name} to ${mealType} on ${dateLabel}; ${addedCount} missing ingredient${addedCount === 1 ? '' : 's'} added to your shopping list.`
+          : `Added ${recipe.name} to ${mealType} on ${dateLabel}. Your pantry has what you need, or the items are already on your list.`);
+      } catch {
+        toast.success(`${recipe.name} was planned, but its missing ingredients could not be added to your shopping list.`);
+      }
       return true;
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not add this recipe to the weekly menu');

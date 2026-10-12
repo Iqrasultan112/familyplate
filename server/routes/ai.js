@@ -3,7 +3,7 @@ import multer from 'multer';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/auth.js';
-import { pantryHas, pantryOverlap, isStaple } from '../lib/foodMatching.js';
+import { pantryHas, pantryOverlap, isStaple, sameIngredient } from '../lib/foodMatching.js';
 import { estimateNutrition } from '../lib/nutritionEstimate.js';
 
 const router = express.Router();
@@ -365,8 +365,8 @@ export const structureRecipeLocally = rawText => {
 };
 
 const addRecipeToFamilyMenu = async ({ userId, familyId, membership, family, args, inventory, restrictions, preferences }) => {
-  if (!membership || !family) return { error: 'Join this family before adding a meal to its menu.' };
-  if (membership.role !== 'maker' && family.creatorId !== userId) return { error: 'Only the family meal planner can add directly to the shared menu. You can send this idea for the planner to review.' };
+  if (familyId && (!membership || !family)) return { error: 'Join this family before adding a meal to its shared menu.' };
+  if (familyId && membership.role !== 'maker' && family.creatorId !== userId) return { error: 'Only the family meal planner can add directly to the shared menu. You can send this idea for the planner to review.' };
   if (!args || typeof args !== 'object') return { error: 'I could not read the meal details. Please repeat the date and meal.' };
   const dateKey = String(args?.date || '').trim();
   const dateIsValid = /^\d{4}-\d{2}-\d{2}$/.test(dateKey)
@@ -385,20 +385,22 @@ const addRecipeToFamilyMenu = async ({ userId, familyId, membership, family, arg
   const instructions = Array.isArray(source.instructions) ? source.instructions.slice(0, 20).map(step => String(step || '').trim().slice(0, 1000)).filter(Boolean) : [];
   if (!name || ingredients.length < 2 || instructions.length < 3) return { error: 'I need a complete recipe with ingredients and at least three clear cooking steps before adding it.' };
   const ingredientText = ingredients.map(item => `${item.name} ${item.quantity}`).join(' ');
-  if (hasAvoidedIngredient(ingredientText, restrictions) || !isDietSafe(ingredientText, preferences)) return { error: 'This recipe conflicts with a saved family food restriction, so I did not add it.' };
+  if (hasAvoidedIngredient(ingredientText, restrictions) || !isDietSafe(ingredientText, preferences)) return { error: 'This recipe conflicts with a saved food restriction, so I did not add it.' };
   const pantryCoverage = Math.round(ingredients.filter(item => pantryHas(inventory, item.name)).length / ingredients.length * 100);
-  if (pantryCoverage < 60) return { error: `Only ${pantryCoverage}% of this recipe matches the current pantry. I did not add it; choose another recipe or update the pantry first.` };
+  if (inventory.length > 0 && pantryCoverage < 60) return { error: `Only ${pantryCoverage}% of this recipe matches the current pantry. I did not add it; choose another recipe or update the pantry first.` };
   const servings = Math.min(30, Math.max(1, Number.parseInt(args.servings, 10) || 4));
   const nutrition = estimateNutrition(ingredients, servings);
   const targetDate = new Date(`${dateKey}T00:00:00.000Z`);
   const dayEnd = new Date(targetDate);
   dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
   const created = await prisma.$transaction(async tx => {
-    const occupied = await tx.weeklyMenu.findFirst({
-      where: { familyId, mealType, date: { gte: targetDate, lt: dayEnd } },
+    const sameSlotMeals = await tx.weeklyMenu.findMany({
+      where: { ...(familyId ? { familyId } : { familyId: null, userId }), mealType, date: { gte: targetDate, lt: dayEnd } },
       include: { recipe: { select: { name: true } } }
     });
-    if (occupied) return { error: `${dateKey} ${mealType} already has ${occupied.recipe.name}. Ask me to replace it if that is what you want.` };
+    if (sameSlotMeals.some(meal => normalizeRecipeName(meal.recipe?.name) === normalizeRecipeName(name))) {
+      return { error: `${name} is already planned for ${dateKey} ${mealType}. You can add a different dish to that meal too.` };
+    }
     const recipe = await tx.recipe.create({
       data: {
         name,
@@ -412,14 +414,21 @@ const addRecipeToFamilyMenu = async ({ userId, familyId, membership, family, arg
       }
     });
     const menu = await tx.weeklyMenu.create({
-      data: { familyId, recipeId: recipe.id, date: targetDate, mealType, servings, status: 'planned', userId },
+      data: { familyId: familyId || null, recipeId: recipe.id, date: targetDate, mealType, servings, status: 'planned', userId },
       include: { recipe: true }
     });
     return { menu };
   });
   if (created.error) return created;
+  const missingIngredients = ingredients.filter(item => !pantryHas(inventory, item.name));
+  const existingShopping = await prisma.shoppingItem.findMany({ where: { userId, isPurchased: false }, select: { ingredient: true } });
+  const shoppingItems = missingIngredients
+    .filter(item => !existingShopping.some(existing => sameIngredient(existing.ingredient, item.name)))
+    .map(item => ({ ingredient: item.name, quantity: item.quantity || '1', userId }));
+  if (shoppingItems.length) await prisma.shoppingItem.createMany({ data: shoppingItems });
   return {
     menuItem: created.menu,
+    shoppingAdded: shoppingItems.length,
     recipe: {
       ...source,
       name,
@@ -435,7 +444,7 @@ const familyMenuTools = [{
   type: 'function',
   function: {
     name: 'add_to_menu',
-    description: 'Add a complete recipe to a family weekly menu. Call only when the user explicitly asks to add or schedule a meal and a specific future/today date plus meal slot are clear.',
+    description: 'Add a complete recipe to the user’s personal meal plan, or to a shared family menu when a family is selected. Call only when the user explicitly asks to add or schedule a meal and a specific future/today date plus meal slot are clear. A date and meal slot may contain several different recipes.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -465,25 +474,33 @@ const familyMenuTools = [{
 // window; the server independently verifies family access and loads private data.
 router.post('/meal-chat', async (req, res) => {
   try {
-    const familyId = Number.parseInt(req.body.familyId, 10);
+    const requestedFamilyId = Number.parseInt(req.body.familyId, 10);
+    const familyId = Number.isInteger(requestedFamilyId) ? requestedFamilyId : null;
     const message = String(req.body.message || '').trim().slice(0, 1200);
-    if (!Number.isInteger(familyId)) return res.status(400).json({ error: 'Choose a family before asking for meal ideas' });
     if (!message) return res.status(400).json({ error: 'Write what you need help deciding' });
     if (!recipeAiEnabled()) return res.status(503).json({ error: 'Meal chat needs a local Ollama model or a configured AI provider' });
 
-    const [membership, family] = await Promise.all([
-      prisma.familyMember.findUnique({ where: { userId_familyId: { userId: req.user.id, familyId } } }),
-      prisma.family.findUnique({ where: { id: familyId }, select: { id: true, name: true, creatorId: true } })
-    ]);
-    if (!membership || !family) return res.status(403).json({ error: 'Join this family to use its meal planner' });
+    let membership = null;
+    let family = null;
+    if (familyId) {
+      [membership, family] = await Promise.all([
+        prisma.familyMember.findUnique({ where: { userId_familyId: { userId: req.user.id, familyId } } }),
+        prisma.family.findUnique({ where: { id: familyId }, select: { id: true, name: true, creatorId: true } })
+      ]);
+      if (!membership || !family) return res.status(403).json({ error: 'Join this family to use its meal planner' });
+    }
 
     const fromDate = new Date();
     fromDate.setDate(fromDate.getDate() - 90);
     const [inventory, members, recentMeals, recentRequests] = await Promise.all([
-      prisma.inventory.findMany({ where: { userId: family.creatorId }, select: { ingredient: true, quantity: true } }),
-      prisma.familyMember.findMany({ where: { familyId }, include: { user: { select: { name: true, role: true, allergies: true, dietaryPreferences: true, dislikes: true } } } }),
-      prisma.weeklyMenu.findMany({ where: { familyId, date: { gte: fromDate } }, include: { recipe: { select: { name: true, ingredients: true } }, event: { select: { name: true, eventType: true } } }, orderBy: { date: 'desc' }, take: 60 }),
-      prisma.mealRequest.findMany({ where: { familyId, createdAt: { gte: fromDate } }, include: { votes: { select: { selectedOption: true } } }, orderBy: { createdAt: 'desc' }, take: 30 })
+      prisma.inventory.findMany({ where: { userId: family?.creatorId || req.user.id }, select: { ingredient: true, quantity: true } }),
+      familyId
+        ? prisma.familyMember.findMany({ where: { familyId }, include: { user: { select: { name: true, role: true, allergies: true, dietaryPreferences: true, dislikes: true } } } })
+        : prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true, role: true, allergies: true, dietaryPreferences: true, dislikes: true } }).then(user => user ? [{ user, userId: req.user.id, role: 'maker' }] : []),
+      prisma.weeklyMenu.findMany({ where: { ...(familyId ? { familyId } : { familyId: null, userId: req.user.id }), date: { gte: fromDate } }, include: { recipe: { select: { name: true, ingredients: true } }, event: { select: { name: true, eventType: true } } }, orderBy: { date: 'desc' }, take: 60 }),
+      familyId
+        ? prisma.mealRequest.findMany({ where: { familyId, createdAt: { gte: fromDate } }, include: { votes: { select: { selectedOption: true } } }, orderBy: { createdAt: 'desc' }, take: 30 })
+        : Promise.resolve([])
     ]);
     const unpack = value => {
       if (Array.isArray(value)) return value.map(String);
@@ -530,7 +547,7 @@ router.post('/meal-chat', async (req, res) => {
       .map(normalizeRecipeName)
       .filter(Boolean));
     const requestedServings = Number.parseInt(req.body.servings, 10);
-    const targetServings = Number.isInteger(requestedServings) ? Math.min(30, Math.max(1, requestedServings)) : members.length;
+    const targetServings = Number.isInteger(requestedServings) ? Math.min(30, Math.max(1, requestedServings)) : (familyId ? members.length : 4);
     const context = {
       date: localDateKey(new Date()),
       servings: targetServings,
@@ -578,7 +595,7 @@ router.post('/meal-chat', async (req, res) => {
       });
       if (action.error) return res.json({ reply: action.error, recipes: [], historyUsed: recentHistory.length > 0, provider: 'direct-menu-action' });
       return res.json({
-        reply: `Added ${action.recipe.name} to ${schedule.date} ${schedule.mealType}.`,
+        reply: `Added ${action.recipe.name} to ${schedule.date} ${schedule.mealType}.${action.shoppingAdded ? ` I also added ${action.shoppingAdded} missing ingredients to your shopping list.` : ''}`,
         recipes: [action.recipe],
         menuAction: { status: 'added', date: schedule.date, mealType: schedule.mealType, menuId: action.menuItem.id },
         historyUsed: recentHistory.length > 0,
@@ -587,13 +604,13 @@ router.post('/meal-chat', async (req, res) => {
     }
     const prompt = `/no_think You are FamilyPlate's warm, practical South Asian home-cooking conversation partner. Speak naturally in the same language/style as the last user turn (English, Urdu, Roman Urdu, or Hindi). You are helping a real household decide what to cook, not filling out a form.
 
-Use this private household context only to help this family. Never reveal it outside the answer. Treat allergies as hard safety rules. Consider pantry quantities, family preferences/dislikes, recent dishes (avoid boring repetition), and votes. Read the user's mood and desired effort from the current turn. User corrections in the conversation always override earlier requests when they conflict. Treat currentMealConstraints as strict: never include an avoided ingredient, include every requested ingredient, and obey the total time limit. If the user says “no”, “not that”, “another”, “something else”, or asks for a different meal, identify the last assistant suggestion from the conversation and offer a genuinely different dish; do not repeat its name. Do not suggest a dish that depends on an ingredient they just said is unavailable. Prefer dishes that use at least 70% of listed pantry items and state exactly what is missing. Do not claim an ingredient is in the pantry unless the pantry list confirms it. Ask at most one short clarifying question only when the request cannot be answered safely; otherwise give one useful next suggestion.
+Use this private household context only to help this family. Never reveal it outside the answer. Treat allergies as hard safety rules. Consider pantry quantities, family preferences/dislikes, recent dishes (avoid boring repetition), and votes. Read the user's mood and desired effort from the current turn. User corrections in the conversation always override earlier requests when they conflict. Treat currentMealConstraints as strict: never include an avoided ingredient, include every requested ingredient, and obey the total time limit. If the user says “no”, “not that”, “another”, “something else”, or asks for a different meal, identify the last assistant suggestion from the conversation and offer a genuinely different dish; do not repeat its name. Do not suggest a dish that depends on an ingredient they just said is unavailable. Prefer dishes that use at least 70% of listed pantry items and state exactly what is missing. Do not claim an ingredient is in the pantry unless the pantry list confirms it. If the pantry list is empty, say so plainly, still suggest a suitable meal, mark all its ingredients as not at home, and offer to add them to the shopping list. Ask at most one short clarifying question only when the request cannot be answered safely; otherwise give one useful next suggestion.
 
 For ordinary days, give practical desi home meals and prioritize available pantry ingredients. Respect a stated time limit; use total prep+cook time. If the user mentions rain/rainy weather, offer a cozy rainy-day meal and consider rainy-day dishes in the household's history. For dawat/guests, scale servings and suggest suitable hosting food. Offer one best idea and up to two brief alternatives in the conversational reply. Return one complete recipe object only, so the answer stays quick. When the user asks for full details, provide exact quantities for servings, prep/cook time, and clear numbered instructions. Do not invent precise nutrition: the app calculates an estimate separately. Do not claim the AI model has been fine-tuned; personalize from the supplied history. Never claim that a meal was saved unless the application confirms it through add_to_menu.
 
 Return ONLY valid JSON: {"reply":"brief conversational answer, acknowledge the user's mood/constraints and explain the best fit plus brief alternatives","recipes":[{"name":"dish name","description":"why this fits","prepTime":"10 min","cookTime":"20 min","servings":"${targetServings}","category":"Lunch or Dinner","ingredients":[{"name":"ingredient","quantity":"amount"}],"instructions":["clear step"]}]}. Make the recipe for exactly ${targetServings} people. Provide zero recipes if first you must ask a clarifying question. Return one best recipe object. Never invent pantry availability. The recipe needs sensible quantities and at least 3 clear steps. Keep cooking time plausible. Do not output nutrition values.
 
-${membership.role === 'maker' || family.creatorId === req.user.id ? 'This user is authorized as the family meal planner.' : 'This user is a family member, not the meal planner. They can get ideas or send them for review, but cannot add directly to the shared menu.'} If the current user explicitly asks to add/schedule a recipe, use the add_to_menu tool when it is available and the date, meal slot, and complete recipe are clear. Otherwise ask for the missing detail. Never say an item was added without a successful tool result.
+${!familyId ? 'This is the user’s personal meal chat, using their own pantry, preferences, and meal history.' : membership.role === 'maker' || family.creatorId === req.user.id ? 'This user is authorized as the family meal planner.' : 'This user is a family member, not the meal planner. They can get ideas or send them for review, but cannot add directly to the shared menu.'} If the current user explicitly asks to add/schedule a recipe, use the add_to_menu tool when it is available and the date, meal slot, and complete recipe are clear. Otherwise ask for the missing detail. Never say an item was added without a successful tool result.
 
 HOUSEHOLD CONTEXT (JSON):\n${JSON.stringify(context)}\n\nCurrent user message: ${message}`;
     // Meal chat prefers the configured hosted Groq model when available: the
@@ -605,7 +622,7 @@ HOUSEHOLD CONTEXT (JSON):\n${JSON.stringify(context)}\n\nCurrent user message: $
       || mealConstraints.required.size > 0
       || mealConstraints.maxMinutes !== null;
     try {
-      const modelSystem = `You are the recipe-generating meal assistant for this household. Follow the latest user message first; use the conversation only to resolve references such as “that”, “another”, and “something else”. If the latest request changes an earlier preference, follow the latest request. Never put avoided foods or aliases in the recipe ingredients; include every requested food; obey the total prep plus cook time; and match the listed pantry. When a different meal is requested, do not repeat the previous suggestion. Return valid JSON only, with a natural brief reply and exactly one complete recipe for ${targetServings} people, including at least 3 ordered cooking steps. Current hard constraints: ${JSON.stringify(context.currentMealConstraints)}. Recent conversation: ${JSON.stringify(context.conversation)}. Pantry: ${JSON.stringify(context.pantry)}. Do not invent pantry availability.`;
+      const modelSystem = `You are the recipe-generating meal assistant for this household. Follow the latest user message first; use the conversation only to resolve references such as “that”, “another”, and “something else”. If the latest request changes an earlier preference, follow the latest request. Never put avoided foods or aliases in the recipe ingredients; include every requested food; obey the total prep plus cook time; and match the listed pantry. When the pantry is empty, still suggest a useful recipe, say the pantry is empty, and mark every ingredient as not in pantry so the user can add them to the shopping list. When a different meal is requested, do not repeat the previous suggestion. Return valid JSON only, with a natural brief reply and exactly one complete recipe for ${targetServings} people, including at least 3 ordered cooking steps. Current hard constraints: ${JSON.stringify(context.currentMealConstraints)}. Recent conversation: ${JSON.stringify(context.conversation)}. Pantry: ${JSON.stringify(context.pantry)}. Do not invent pantry availability.`;
       const modelText = mealChatProvider === 'groq'
         ? await generateGroqText(prompt, { json: true, system: modelSystem })
         : await generateAiText(prompt, {
@@ -635,7 +652,7 @@ HOUSEHOLD CONTEXT (JSON):\n${JSON.stringify(context)}\n\nCurrent user message: $
         !avoidsRestrictedFoods && 'included a food the user ruled out',
         repeatedSuggestion && 'repeated the previous suggestion after the user asked for a different meal',
         !isDietSafe(generatedText, preferences) && 'conflicted with family diet settings',
-        generatedPantryCoverage < 0.6 && 'pantry match was below 60%'
+        inventory.length > 0 && generatedPantryCoverage < 0.6 && 'pantry match was below 60%'
       ].filter(Boolean);
       if (invalidReasons.length) throw new Error(`Model recipe rejected: ${invalidReasons.join(', ')}`);
     } catch (aiError) {
@@ -652,7 +669,7 @@ HOUSEHOLD CONTEXT (JSON):\n${JSON.stringify(context)}\n\nCurrent user message: $
         const totalMinutes = Number.parseInt(recipe.prepTime, 10) + Number.parseInt(recipe.cookTime, 10);
         const timeOkay = mealConstraints.maxMinutes === null || (Number.isFinite(totalMinutes) && totalMinutes <= mealConstraints.maxMinutes);
         const dietSafe = isDietSafe(ingredientText, preferences);
-        return covered > 0 && missing <= 3 && includesRequestedFoods && timeOkay && dietSafe && !hasAvoidedIngredient(`${ingredientText} ${recipe.allergens.join(' ')}`, avoids);
+        return (!inventory.length || (covered > 0 && missing <= 3)) && includesRequestedFoods && timeOkay && dietSafe && !hasAvoidedIngredient(`${ingredientText} ${recipe.allergens.join(' ')}`, avoids);
       }).sort((a, b) => {
         const aCoverage = pantryOverlap(inventory, a.ingredients);
         const bCoverage = pantryOverlap(inventory, b.ingredients);
@@ -715,7 +732,9 @@ HOUSEHOLD CONTEXT (JSON):\n${JSON.stringify(context)}\n\nCurrent user message: $
       ].filter(Boolean).join(', ');
       const fallbackPhoto = await findRecipePhoto(recipe.name);
       return res.json({
-        reply: fastPantryMatch
+        reply: !inventory.length
+          ? `Your pantry is empty right now. ${recipe.name} could work, and I’ve marked the ingredients you’ll need so you can add them to your shopping list.`
+          : fastPantryMatch
           ? `Got it${choiceNotes ? ` — ${choiceNotes}` : ''}. ${recipe.name} fits your pantry${alternatives.length ? `; another option is ${alternatives.join(' or ')}` : ''}.`
           : `I matched this idea to your pantry${alternatives.length ? ` and have ${alternatives.join(' or ')} as alternatives` : ''}.`,
         recipes: [{
@@ -729,6 +748,7 @@ HOUSEHOLD CONTEXT (JSON):\n${JSON.stringify(context)}\n\nCurrent user message: $
           nutrition: estimateNutrition(ingredients, targetServings)
         }],
         historyUsed: recentHistory.length > 0,
+        pantryEmpty: inventory.length === 0,
         provider: 'pantry-library-fallback'
       });
     }
@@ -768,7 +788,9 @@ HOUSEHOLD CONTEXT (JSON):\n${JSON.stringify(context)}\n\nCurrent user message: $
       const photo = await findRecipePhoto(recipe.name);
       return { ...recipe, image: photo?.image || null, sourceUrl: photo?.sourceUrl || null };
     }));
-    res.json({ reply: String(parsed.reply || 'I have a meal idea for you.').slice(0, 2400), recipes: recipesWithPhotos, historyUsed: recentHistory.length > 0, provider: mealChatProvider || null });
+    const pantryEmpty = inventory.length === 0;
+    const reply = String(parsed.reply || 'I have a meal idea for you.').slice(0, 2400);
+    res.json({ reply: pantryEmpty ? `Your pantry is empty right now, so I’ll mark every ingredient you need. ${reply}` : reply, recipes: recipesWithPhotos, historyUsed: recentHistory.length > 0, pantryEmpty, provider: mealChatProvider || null });
   } catch (error) {
     console.error('Meal chat error:', error.message);
     res.status(502).json({ error: 'I could not get a meal-planning reply right now. Please try again in a moment.' });
@@ -1413,9 +1435,6 @@ router.post('/suggest-recipes', async (req, res) => {
       if (!membership || !family) return res.status(403).json({ error: 'Join this family to see its meal ideas' });
       pantryOwnerId = family.creatorId;
       familyMembers = await prisma.familyMember.findMany({ where: { familyId }, include: { user: { select: { allergies: true, dietaryPreferences: true, dislikes: true } } } });
-    } else {
-      const account = await prisma.user.findUnique({ where: { id: req.user.id }, select: { role: true } });
-      if (account?.role !== 'maker') return res.status(403).json({ error: 'Join a family to get its pantry based meal ideas' });
     }
     const inventory = await prisma.inventory.findMany({ where: { userId: pantryOwnerId }, select: { ingredient: true, quantity: true } });
     const historyFrom = new Date();
@@ -1470,8 +1489,7 @@ router.post('/suggest-recipes', async (req, res) => {
     const occasion = occasionMap[req.body.occasion] || occasionMap.everyday;
     const invNames = inventory.map(i => (typeof i === 'string' ? i : i.ingredient || '').toLowerCase());
     const everyday = !req.body.occasion || req.body.occasion === 'everyday';
-    const usablePantry = invNames.filter(name => !isStaple(name));
-    if (everyday && usablePantry.length === 0) return res.json({ recipes: [], source: 'pantry', message: 'Add a main ingredient such as rice, lentils, eggs, vegetables, or meat to your pantry to get matched everyday recipes.' });
+    const pantryEmpty = inventory.length === 0;
     const allergyList = [...allergyItems, ...restrictionItems].map(a => String(a).toLowerCase());
     const avoidList = [...allergyList, ...dislikeItems].map(a => String(a).toLowerCase());
     if (preferenceItems.some(item => /dairy.free|lactose.free/i.test(String(item)))) avoidList.push('dairy');
@@ -1485,13 +1503,13 @@ router.post('/suggest-recipes', async (req, res) => {
     if (aiConfigured) {
       try {
         const prompt = `You are an expert South Asian family meal planner. Generate 6 distinct, genuinely cookable recipe candidates so the application can select the best 3 after checking pantry matches and family restrictions. Do not repeat these previously shown recipe names: ${[...excludedNames].join(', ') || 'None'}.
-Available Kitchen Inventory (use these real items; do not invent pantry stock): ${invNames.join(', ')}
+Available Kitchen Inventory (use these real items; do not invent pantry stock): ${invNames.join(', ') || 'No pantry items saved yet'}
 Family Allergies TO STRICTLY AVOID: ${allergyList.join(', ') || 'None'}
 Dietary Preferences: ${preferenceItems.join(', ') || 'Healthy, Family Friendly'}
 Family dislikes and restrictions to avoid: ${avoidList.join(', ') || 'None'}
 Recently cooked dishes (most recent first; use these to avoid repetitive suggestions): ${JSON.stringify(cookedHistory) || '[]'}
 Family vote history — dishes with more yes votes than no votes to favor: ${votedFavorites.join(', ') || 'No clear pattern yet'}. Dishes with more no votes to avoid: ${votedDislikes.join(', ') || 'No clear pattern yet'}.
-        Make each recipe for exactly ${targetServings} people. Occasion: ${occasion}. Every everyday recipe must use pantry ingredients and need no more than 3 non-staple ingredients that are missing. For Eid, birthday, or dawat, suggest dishes suitable for that event, including a balanced mix of mains/sides/dessert where appropriate. Consider dietary restrictions in every dish.
+        Make each recipe for exactly ${targetServings} people. Occasion: ${occasion}. ${pantryEmpty ? 'The pantry is empty: still suggest practical meals, mark every ingredient as not in pantry, and make the missing ingredients easy to add to the shopping list.' : 'Everyday recipes must use pantry ingredients and need no more than 3 non-staple ingredients that are missing.'} For Eid, birthday, or dawat, suggest dishes suitable for that event, including a balanced mix of mains/sides/dessert where appropriate. Consider dietary restrictions in every dish.
 Prioritize familiar South Asian home cooking (roti, daal, sabzi, rice, halal options), practical ingredients and mild-to-adjustable spice. Learn the family's preferences from actual cooked meals and votes: favor repeated traditions on their usual day/meal slot, avoid recently cooked dishes when there are good alternatives, and respect strong dislikes.
 
 Return ONLY a JSON object with a top-level "recipes" array using this schema. Nutrition values must be approximate per-person values.
@@ -1522,9 +1540,9 @@ Return ONLY a JSON object with a top-level "recipes" array using this schema. Nu
           const safeRecipes = aiRecipes.filter(recipe => {
             const ingredientText = (recipe.ingredients || []).map(item => `${item.name || ''} ${item.quantity || ''}`).join(' ');
             const combined = `${ingredientText} ${(recipe.allergens || []).join(' ')}`;
-            const hasPantryMatch = !everyday || (recipe.ingredients || []).some(item => !isStaple(item.name) && pantryHas(invNames, item.name));
+            const hasPantryMatch = !everyday || pantryEmpty || (recipe.ingredients || []).some(item => !isStaple(item.name) && pantryHas(invNames, item.name));
             const missingPantryItems = (recipe.ingredients || []).filter(item => !isStaple(item.name) && !pantryHas(invNames, item.name)).length;
-            return hasPantryMatch && (!everyday || missingPantryItems <= 3) && !excludedNames.has(normalizeRecipeName(recipe.name)) && !hasAvoidedIngredient(combined, avoidList) && isDietSafe(ingredientText, preferenceItems);
+            return hasPantryMatch && (!everyday || pantryEmpty || missingPantryItems <= 3) && !excludedNames.has(normalizeRecipeName(recipe.name)) && !hasAvoidedIngredient(combined, avoidList) && isDietSafe(ingredientText, preferenceItems);
           }).sort((a,b) => (pantryOverlap(invNames, b.ingredients || []) + favoriteScore(b, favoriteTerms) * 5) - (pantryOverlap(invNames, a.ingredients || []) + favoriteScore(a, favoriteTerms) * 5));
           if (safeRecipes.length) {
             const normalized = await Promise.all(safeRecipes.slice(0, 3).map(async recipe => {
@@ -1550,7 +1568,7 @@ Return ONLY a JSON object with a top-level "recipes" array using this schema. Nu
     }
 
     try {
-      const mealDbRecipes = await fetchMealDbRecipes({ ingredients: invNames, occasion: req.body.occasion, targetServings, avoidList, preferences: preferenceItems, excludedNames });
+      const mealDbRecipes = pantryEmpty ? [] : await fetchMealDbRecipes({ ingredients: invNames, occasion: req.body.occasion, targetServings, avoidList, preferences: preferenceItems, excludedNames });
       if (mealDbRecipes.length) {
         const combined = [...acceptedAiRecipes];
         const seen = new Set(combined.map(recipe => normalizeRecipeName(recipe.name)));
@@ -1572,9 +1590,9 @@ Return ONLY a JSON object with a top-level "recipes" array using this schema. Nu
       const dietTags = recipe.dietary.map(item => item.toLowerCase());
       const dietSafe = !vegetarianOnly || dietTags.some(tag => tag.includes('vegetarian') || tag.includes('vegan'));
       const veganSafe = !veganOnly || (dietTags.some(tag => tag.includes('vegan')) && !/milk|cheese|butter|cream|egg|honey|yogurt/.test(ingredientsText));
-      const pantryOkay = !everyday || recipe.ingredients.some(ing => !isStaple(ing.name) && pantryHas(invNames, ing.name));
+      const pantryOkay = !everyday || pantryEmpty || recipe.ingredients.some(ing => !isStaple(ing.name) && pantryHas(invNames, ing.name));
       const missingPantryItems = recipe.ingredients.filter(ing => !isStaple(ing.name) && !pantryHas(invNames, ing.name)).length;
-      return pantryOkay && (!everyday || missingPantryItems <= 3) && dietSafe && veganSafe && isDietSafe(ingredientsText, preferenceItems) && !hasAvoidedIngredient(`${recipe.allergens.join(' ')} ${ingredientsText}`, avoidList);
+      return pantryOkay && (!everyday || pantryEmpty || missingPantryItems <= 3) && dietSafe && veganSafe && isDietSafe(ingredientsText, preferenceItems) && !hasAvoidedIngredient(`${recipe.allergens.join(' ')} ${ingredientsText}`, avoidList);
     });
 
     const eventDishPatterns = {
@@ -1639,7 +1657,7 @@ Return ONLY a JSON object with a top-level "recipes" array using this schema. Nu
       if (!seenNames.has(name)) { combinedRecipes.push(recipe); seenNames.add(name); }
       if (combinedRecipes.length >= 3) break;
     }
-    res.json({ recipes: combinedRecipes.slice(0, 3), source: acceptedAiRecipes.length ? 'ai+pantry-library' : 'pantry-library', cycled, aiUnavailable, message: combinedRecipes.length ? undefined : 'No recipes matched what is in the pantry and the family food rules. Add an ingredient or update preferences to see more ideas.' });
+    res.json({ recipes: combinedRecipes.slice(0, 3), source: acceptedAiRecipes.length ? 'ai+pantry-library' : 'pantry-library', cycled, aiUnavailable, pantryEmpty, message: combinedRecipes.length ? undefined : 'No recipes matched these food preferences. Try changing the occasion or your preferences.' });
   } catch (error) {
     console.error('Suggest recipes error:', error);
     res.status(500).json({ error: 'Failed to suggest recipes' });

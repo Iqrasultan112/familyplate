@@ -1,11 +1,14 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
-import { authenticate, requireMaker } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-router.use(authenticate, requireMaker);
+// Shopping lists belong to an individual account, so family planner roles do
+// not gate them. Family-specific actions still check family membership in
+// their own routes.
+router.use(authenticate);
 
 router.get('/', async (req, res) => {
   try {

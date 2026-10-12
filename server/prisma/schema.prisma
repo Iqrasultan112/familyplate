@@ -228,6 +228,7 @@ model CommunityPost {
   id               Int                @id @default(autoincrement())
   content          String
   type             String             @default("share") // share, request
+  image            String?
   userId           Int
   user             User               @relation(fields: [userId], references: [id])
   recipeId         Int?

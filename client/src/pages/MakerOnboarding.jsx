@@ -33,13 +33,12 @@ export default function MakerOnboarding() {
   const { user, checkAuth } = useAuthStore();
   const navigate = useNavigate();
 
-  // Wizard steps: 1: Groceries Upload, 2: Family Setup & Invite, 3: Dietary & Allergies
+  // Family setup is optional and lives in the Family section. New planners can
+  // finish pantry and preference setup without creating a family first.
   const [currentStep, setCurrentStep] = useState(1);
 
   // Step 1: Grocery extraction state
-  const [groceryText, setGroceryText] = useState(
-    "1 kg Chicken\n2 kg Basmati Rice\n1 kg Fresh Tomatoes\n500g Onions\n1 Liter Milk\n1 packet Yellow Lentils (Daal)\nCooking Oil\nGinger & Garlic\nGreen Chilies"
-  );
+  const [groceryText, setGroceryText] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractedItems, setExtractedItems] = useState([]);
   const [newItemName, setNewItemName] = useState('');
@@ -96,18 +95,14 @@ export default function MakerOnboarding() {
 
   const handleConfirmGroceries = async () => {
     try {
-      // Save items to user's kitchen inventory in bulk
-      for (const item of extractedItems) {
-        await api.post('/inventory', {
-          ingredient: item.ingredient,
-          quantity: item.quantity
-        });
-      }
-      toast.success('Pantry inventory saved!');
-      setCurrentStep(2);
+      const result = await api.post('/inventory/bulk', { items: extractedItems });
+      toast.success(result.data.added
+        ? `${result.data.added} pantry items saved${result.data.skipped ? ` · ${result.data.skipped} already there` : ''}!`
+        : 'Your starter pantry is already saved. You can edit it from Pantry anytime.');
+      setCurrentStep(3);
     } catch (error) {
-      // Even if inventory had duplicate or partial, advance to family setup
-      setCurrentStep(2);
+      // Pantry setup is optional; continue to preferences even if saving fails.
+      setCurrentStep(3);
     }
   };
 
@@ -168,10 +163,10 @@ export default function MakerOnboarding() {
         dislikes
       });
       if (checkAuth) checkAuth();
-      toast.success('All set! Here are your daily meal suggestions 🍽️');
-      navigate('/family/suggestions');
+      toast.success('All set! Your planner is ready 🍽️');
+      navigate('/dashboard');
     } catch (error) {
-      navigate('/family/suggestions');
+      navigate('/dashboard');
     }
   };
 
@@ -196,15 +191,14 @@ export default function MakerOnboarding() {
         </div>
         <h1 className="text-3xl font-bold text-gray-900">Welcome, Chef of the House! 👩‍🍳</h1>
         <p className="text-gray-500 text-sm max-w-lg mx-auto">
-          Let's set up your kitchen groceries, invite your family members, and get smart daily recipe suggestions.
+          Add pantry items and food preferences now. Set up a family later if you want shared chats, meal votes, or invites.
         </p>
 
         {/* Steps indicator */}
         <div className="flex items-center justify-center gap-3 pt-4">
           {[
-            { num: 1, label: 'Groceries' },
-            { num: 2, label: 'Family Invite' },
-            { num: 3, label: 'Preferences' }
+            { num: 1, display: 1, label: 'Pantry' },
+            { num: 3, display: 2, label: 'Preferences' }
           ].map((s) => (
             <div key={s.num} className="flex items-center gap-2">
               <div
@@ -216,12 +210,12 @@ export default function MakerOnboarding() {
                     : 'bg-gray-200 text-gray-600'
                 }`}
               >
-                {currentStep > s.num ? <Check className="w-4 h-4" /> : s.num}
+                {currentStep > s.num ? <Check className="w-4 h-4" /> : s.display}
               </div>
               <span className={`text-xs font-medium ${currentStep === s.num ? 'text-gray-900 font-bold' : 'text-gray-500'}`}>
                 {s.label}
               </span>
-              {s.num < 3 && <div className="w-8 h-0.5 bg-gray-200"></div>}
+              {s.display < 2 && <div className="w-8 h-0.5 bg-gray-200"></div>}
             </div>
           ))}
         </div>
@@ -273,10 +267,11 @@ export default function MakerOnboarding() {
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  Extracted Pantry Inventory ({extractedItems.length} items)
+                  Pantry items ({extractedItems.length})
                 </h3>
-                <span className="text-xs text-gray-400">Review & edit before saving</span>
+                <button type="button" onClick={() => setExtractedItems([])} className="text-xs font-semibold text-primary-700 underline">Clear sample list</button>
               </div>
+              <p className="text-xs leading-5 text-gray-500">Only add items you actually have. You can leave the pantry empty and add missing ingredients to your shopping list when you plan meals.</p>
 
               <div className="max-h-64 overflow-y-auto border rounded-xl divide-y text-sm">
                 {extractedItems.map((item, idx) => (
@@ -343,7 +338,7 @@ export default function MakerOnboarding() {
             <div className="text-right">
               <button
                 type="button"
-                onClick={() => setCurrentStep(2)}
+                onClick={() => setCurrentStep(3)}
                 className="text-sm text-gray-400 hover:text-gray-600 underline"
               >
                 Skip this step for now
@@ -489,10 +484,10 @@ export default function MakerOnboarding() {
           <div className="border-b pb-4">
             <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <ShieldAlert className="w-5 h-5 text-red-600" />
-              Step 3: Household Dietary Preferences & Allergy Shield
+              Step 2: Food Preferences & Allergy Shield
             </h2>
             <p className="text-sm text-gray-500 mt-1">
-              Select your family's dietary rules and critical allergies. Any daily recipe suggested will strictly exclude these allergens!
+              Add your dietary preferences and allergies. Meal ideas will use these details when available.
             </p>
           </div>
 
@@ -500,7 +495,7 @@ export default function MakerOnboarding() {
           <div className="space-y-2">
             <label className="label font-medium text-gray-800 flex items-center gap-1.5">
               <ShieldAlert className="w-4 h-4 text-red-500" />
-              Family Allergies & Sensitivities to AVOID:
+              Allergies & Sensitivities to AVOID:
             </label>
             <div className="flex flex-wrap gap-2 pt-1">
               {COMMON_ALLERGIES.map((allergy) => {
@@ -527,7 +522,7 @@ export default function MakerOnboarding() {
           <div className="space-y-2 pt-2 border-t border-gray-100">
             <label className="label font-medium text-gray-800 flex items-center gap-1.5">
               <UtensilsCrossed className="w-4 h-4 text-primary-500" />
-              Household Dietary Preferences:
+              Dietary Preferences:
             </label>
             <div className="flex flex-wrap gap-2 pt-1">
               {COMMON_DIETARY.map((diet) => {
@@ -551,7 +546,7 @@ export default function MakerOnboarding() {
           </div>
 
           <div className="space-y-1 pt-2 border-t border-gray-100">
-            <label className="label font-medium text-gray-700" htmlFor="favoriteFoods">Foods or flavours your family loves (Optional)</label>
+            <label className="label font-medium text-gray-700" htmlFor="favoriteFoods">Foods or flavours you enjoy (Optional)</label>
             <input id="favoriteFoods" type="text" maxLength={200} placeholder="e.g. chicken, biryani, mild spice, spinach" className="input w-full text-sm" value={favoriteFoods} onChange={e => setFavoriteFoods(e.target.value)} />
           </div>
 

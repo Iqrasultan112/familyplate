@@ -7,6 +7,7 @@ import { sameIngredient } from '../lib/foodMatching';
 import useAuthStore from '../store/authStore';
 import RecipePhoto from '../components/RecipePhoto';
 import ShoppingIngredientsModal from '../components/ShoppingIngredientsModal';
+import { addMissingRecipeIngredients } from '../lib/addMissingRecipeIngredients';
 
 const toLocalDateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const mealTypes = ['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Side dish'];
@@ -65,8 +66,8 @@ export default function WeeklyMenu() {
         const family = r.data?.family;
         fId = family?.id;
         setFamilyId(fId);
-        setIsMaker(family ? family.creatorId === user?.id || family.members?.some(member => member.userId === user?.id && member.role === 'maker') : user?.role === 'maker');
-      } catch { setIsMaker(user?.role === 'maker'); }
+        setIsMaker(family ? family.creatorId === user?.id || family.members?.some(member => member.userId === user?.id && member.role === 'maker') : true);
+      } catch { setIsMaker(true); }
       const res = await api.get(fId ? `/weeklyMenu/family/${fId}` : '/weeklyMenu');
       const pantryRes = await api.get('/inventory').catch(() => ({ data: [] }));
       setPantry(pantryRes.data || []);
@@ -132,7 +133,12 @@ export default function WeeklyMenu() {
         if (!window.confirm(`Replace ${oldItem.recipe?.name || 'this planned meal'} with ${myRecipes.find(recipe => String(recipe.id) === String(selectedRecipeId))?.name || 'your selected recipe'}?`)) return;
         const { data } = await api.patch(`/weeklyMenu/${replaceItemId}/replace`, { recipeId: selectedRecipeId });
         setMenuItems(menuItems.map(item => item.id === data.id ? data : item));
-        toast.success('Planned meal replaced');
+        try {
+          const addedCount = await addMissingRecipeIngredients(selectedRecipeId);
+          toast.success(addedCount ? `Planned meal replaced; ${addedCount} missing ingredient${addedCount === 1 ? '' : 's'} added to your shopping list.` : 'Planned meal replaced. Your pantry has what you need, or the items are already on your list.');
+        } catch {
+          toast.success('Planned meal replaced, but missing ingredients could not be added to your shopping list.');
+        }
       } else {
         let date = selectedDate;
         if (planChoice === 'next-week') {
@@ -143,7 +149,13 @@ export default function WeeklyMenu() {
         const res = await api.post('/weeklyMenu', { date, recipeId: selectedRecipeId, servings, mealType, familyId });
         setMenuItems([...menuItems, res.data]);
         if (planChoice === 'next-week') setCurrentDate(new Date(`${date}T12:00:00`));
-        toast.success(planChoice === 'next-week' ? 'Added to next week’s menu' : 'Meal added to this week’s menu');
+        try {
+          const addedCount = await addMissingRecipeIngredients(selectedRecipeId);
+          const planMessage = planChoice === 'next-week' ? 'Added to next week’s menu' : 'Meal added to this week’s menu';
+          toast.success(addedCount ? `${planMessage}; ${addedCount} missing ingredient${addedCount === 1 ? '' : 's'} added to your shopping list.` : `${planMessage}. Your pantry has what you need, or the items are already on your list.`);
+        } catch {
+          toast.success('Meal planned, but missing ingredients could not be added to your shopping list.');
+        }
       }
       setShowAddModal(false); resetModal(); fetchMenu();
     } catch (err) {
@@ -232,9 +244,9 @@ export default function WeeklyMenu() {
       {/* Header */}
       <div className="page-heading flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="page-title">{familyId ? 'Family Weekly Menu' : 'My Weekly Menu'}</h1>
+          <h1 className="page-title">Hafte ka khana · {familyId ? 'Family plan' : 'My plan'}</h1>
           <p className="page-subtitle">
-            Pick a day to see its meals, events, and cooking plan.
+            Pick a date to see what’s cooking. Choose any day to add or check a meal.
           </p>
           {familyId && !isMaker && <p className="mt-1 text-xs text-slate-500">View-only family plan. Vote or request meals from your family space.</p>}
         </div>
@@ -245,7 +257,7 @@ export default function WeeklyMenu() {
           </button>
           <button onClick={() => setCurrentDate(new Date())}
             className="px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg transition-colors">
-            Today
+            Aaj
           </button>
           <button onClick={() => { const now = new Date(); setCurrentDate(new Date(now.getFullYear(), now.getMonth(), 1)); setFocusedDate(todayKey); }}
             className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
@@ -257,7 +269,7 @@ export default function WeeklyMenu() {
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(340px,0.9fr)_minmax(0,1.35fr)]">
         <section className="overflow-hidden rounded-3xl border border-orange-100 bg-white p-5 shadow-card sm:p-6">
           <div className="mb-5 flex items-center justify-between">
-            <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary-700">Your calendar</p><h2 className="mt-1 text-xl font-bold text-slate-900">{currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h2></div>
+            <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary-700">Tap any date · Kisi din ko chunein</p><h2 className="mt-1 text-xl font-bold text-slate-900">{currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h2></div>
             <div className="flex items-center gap-1"><button aria-label="Previous month" onClick={() => changeMonth(-1)} className="rounded-xl p-2 hover:bg-orange-50"><ChevronLeft className="h-5 w-5" /></button><button aria-label="Next month" onClick={() => changeMonth(1)} className="rounded-xl p-2 hover:bg-orange-50"><ChevronRight className="h-5 w-5" /></button></div>
           </div>
           <div className="mb-2 grid grid-cols-7 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day => <span key={day} className="py-2">{day}</span>)}</div>
@@ -274,20 +286,21 @@ export default function WeeklyMenu() {
         </section>
 
         <section className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-orange-100 bg-orange-50/70 p-5 sm:p-6"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-primary-700">Selected day</p><h2 className="mt-1 text-2xl font-bold text-slate-900">{selectedDay.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h2><p className="mt-1 text-sm text-slate-600">{selectedMeals.length} planned {selectedMeals.length === 1 ? 'meal' : 'meals'}</p></div><div className="flex items-center gap-2"><button onClick={() => { const d = new Date(selectedDay); d.setDate(d.getDate() - 1); setFocusedDate(toLocalDateKey(d)); setCurrentDate(new Date(d.getFullYear(), d.getMonth(), 1)); }} className="rounded-xl border border-orange-200 bg-white p-2"><ChevronLeft className="h-4 w-4" /></button><button onClick={() => { setFocusedDate(todayKey); const d = new Date(); setCurrentDate(new Date(d.getFullYear(), d.getMonth(), 1)); }} className="rounded-xl border border-orange-200 bg-white px-3 py-2 text-xs font-semibold">Today</button><button onClick={() => { const d = new Date(selectedDay); d.setDate(d.getDate() + 1); setFocusedDate(toLocalDateKey(d)); setCurrentDate(new Date(d.getFullYear(), d.getMonth(), 1)); }} className="rounded-xl border border-orange-200 bg-white p-2"><ChevronRight className="h-4 w-4" /></button></div></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-orange-100 bg-orange-50/70 p-5 sm:p-6"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-primary-700">Meals for this date · Is din ka khana</p><h2 className="mt-1 text-2xl font-bold text-slate-900">{selectedDay.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h2><p className="mt-1 text-sm text-slate-600">{selectedMeals.length} planned {selectedMeals.length === 1 ? 'meal' : 'meals'}</p></div><div className="flex items-center gap-2"><button aria-label="Previous day" onClick={() => { const d = new Date(selectedDay); d.setDate(d.getDate() - 1); setFocusedDate(toLocalDateKey(d)); setCurrentDate(new Date(d.getFullYear(), d.getMonth(), 1)); }} className="rounded-xl border border-orange-200 bg-white p-2"><ChevronLeft className="h-4 w-4" /></button><button onClick={() => { setFocusedDate(todayKey); const d = new Date(); setCurrentDate(new Date(d.getFullYear(), d.getMonth(), 1)); }} className="rounded-xl border border-orange-200 bg-white px-3 py-2 text-xs font-semibold">Aaj · Today</button><button aria-label="Next day" onClick={() => { const d = new Date(selectedDay); d.setDate(d.getDate() + 1); setFocusedDate(toLocalDateKey(d)); setCurrentDate(new Date(d.getFullYear(), d.getMonth(), 1)); }} className="rounded-xl border border-orange-200 bg-white p-2"><ChevronRight className="h-4 w-4" /></button></div></div>
           {selectedEvents.map(event => <Link key={event.id} to="/family/events" className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950"><CalendarDays className="h-5 w-5 text-amber-700" /><span><strong>{event.name}</strong><span className="block text-xs">{event.guestCount || 4} guests · special menu</span></span></Link>)}
-          <div className="space-y-3">{mealTypes.map(type => {
+          {isMaker && focusedDate >= todayKey && selectedMeals.length > 0 && <button onClick={() => openModal(selectedDay)} className="btn-primary min-h-12 w-full justify-center"><Plus className="h-4 w-4" /> Add a meal · Khana add karein</button>}
+          {!selectedMeals.length ? <div className="rounded-2xl border border-dashed border-primary-300 bg-white p-6 text-center"><span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-orange-50 text-primary-700"><CalendarDays className="h-6 w-6" /></span><h3 className="mt-3 font-bold text-slate-900">Nothing planned for this day</h3><p className="mt-1 text-sm text-slate-600">Is din ka khana abhi plan nahi hua.</p>{isMaker && focusedDate >= todayKey && <button onClick={() => openModal(selectedDay)} className="btn-secondary mt-4">Add the first meal</button>}</div> : <div className="space-y-3">{mealTypes.filter(type => selectedMeals.some(item => (item.mealType || 'Dinner') === type)).map(type => {
             const meals = selectedMeals.filter(item => (item.mealType || 'Dinner') === type);
             const canAdd = isMaker && focusedDate >= todayKey;
             return <section key={type} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-orange-50 text-primary-700"><Clock3 className="h-4 w-4" /></span><h3 className="font-bold text-slate-800">{type}</h3><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{meals.length}</span></div>{canAdd && <button onClick={() => openModal(selectedDay, type)} className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-primary-700 hover:bg-orange-50"><Plus className="h-4 w-4" /> Add meal</button>}</div>
+              <div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-orange-50 text-primary-700"><Clock3 className="h-4 w-4" /></span><h3 className="font-bold text-slate-800">{{ Breakfast: 'Breakfast · Nashta', Lunch: 'Lunch · Dopahar ka khana', Dinner: 'Dinner · Raat ka khana', Snack: 'Snack · Halka phulka', 'Side dish': 'Side dish · Saath ka khana' }[type]}</h3><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{meals.length}</span></div>{canAdd && <button onClick={() => openModal(selectedDay, type)} className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-primary-700 hover:bg-orange-50"><Plus className="h-4 w-4" /> Add meal</button>}</div>
               {!meals.length ? <p className="py-2 text-sm text-slate-400">No {type.toLowerCase()} planned.</p> : <div className="space-y-2">{meals.map(meal => <article key={meal.id} className="relative flex items-center gap-3 rounded-2xl bg-slate-50 p-3">
                 <RecipePhoto recipe={meal.recipe || { name: meal.recipeName || 'family meal' }} alt={meal.recipe?.name || 'Meal'} className="h-16 w-16 shrink-0 rounded-xl object-cover" loading="lazy" />
                 <div className="min-w-0 flex-1"><p className="truncate font-semibold text-slate-900">{meal.recipe?.name || meal.recipeName || 'Planned meal'}</p><p className="mt-0.5 text-xs text-slate-500">{meal.servings || meal.event?.guestCount || meal.recipe?.servings || 4} servings{meal.status === 'cooking' ? ' · Cooking now' : ['completed','cooked'].includes(meal.status) ? ' · Cooked' : ''}{meal.event && ` · ${meal.event.name}`}</p><div className="mt-2 flex flex-wrap items-center gap-2">{isMaker && meal.recipeId && focusedDate === todayKey && !['completed','cooked'].includes(meal.status) && <button onClick={() => startCooking(meal)} disabled={startingMealId === meal.id} className="inline-flex items-center gap-1 rounded-lg bg-primary-700 px-2.5 py-1.5 text-xs font-bold text-white"><ChefHat className="h-3.5 w-3.5" />{meal.status === 'cooking' ? 'Resume cooking' : 'Start cooking'}</button>}{['completed','cooked'].includes(meal.status) && <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><PackageCheck className="h-4 w-4" /> Cooked</span>}{meal.recipeId && <Link to={`/recipes/${meal.recipeId}`} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600"><Eye className="h-3.5 w-3.5" /> Recipe</Link>}</div></div>
                 {isMaker && !['completed','cooked','cooking'].includes(meal.status) && <div className="relative"><button aria-label="Meal options" onClick={() => setOpenMenuId(openMenuId === meal.id ? null : meal.id)} className="rounded-xl p-2 text-slate-500 hover:bg-white"><MoreHorizontal className="h-5 w-5" /></button>{openMenuId === meal.id && <><button aria-label="Close meal options" className="fixed inset-0 z-20 cursor-default" onClick={() => setOpenMenuId(null)} /><div className="absolute right-0 top-full z-30 mt-1 w-56 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl"><button onClick={() => beginMealEdit(meal, 'date')} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-orange-50"><Pencil className="h-4 w-4" /> Change date</button><button onClick={() => beginMealEdit(meal, 'type')} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-orange-50"><Clock3 className="h-4 w-4" /> Change meal type</button><button onClick={() => { setShoppingMeal(meal); setOpenMenuId(null); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-orange-50"><ShoppingCart className="h-4 w-4" /> Add to shopping list</button><button onClick={() => { setOpenMenuId(null); handleRemove(meal.id); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /> Remove from plan</button></div></>}</div>}
               </article>)}</div>}
             </section>;
-          })}</div>
+          })}</div>}
           {isMaker && focusedDate < todayKey && <p className="px-1 text-xs text-slate-500">Past meals are available to view. You can add meals starting today.</p>}
         </section>
       </div>

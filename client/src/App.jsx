@@ -22,13 +22,11 @@ const FamilyVoting      = lazy(() => import('./pages/FamilyVoting'));
 const EventPlanner      = lazy(() => import('./pages/EventPlanner'));
 const WeeklyMenu        = lazy(() => import('./pages/WeeklyMenu'));
 const CommunityHome     = lazy(() => import('./pages/CommunityHome'));
-const CommunityChat     = lazy(() => import('./pages/CommunityChat'));
 const CommunityGroups   = lazy(() => import('./pages/CommunityGroups'));
 const CreateRecipePost  = lazy(() => import('./pages/CreateRecipePost'));
 const RecipesPage       = lazy(() => import('./pages/RecipesPage'));
 const RecipeDetails     = lazy(() => import('./pages/RecipeDetails'));
 const AIRecipeProcessor = lazy(() => import('./pages/AIRecipeProcessor'));
-const MyMenu            = lazy(() => import('./pages/MyMenu'));
 const Inventory         = lazy(() => import('./pages/Inventory'));
 const ShoppingCart      = lazy(() => import('./pages/ShoppingCart'));
 const Profile           = lazy(() => import('./pages/Profile'));
@@ -112,7 +110,7 @@ export default function App() {
 
             {/* Community */}
             <Route path="/community"      element={<CommunityHome />} />
-            <Route path="/community/chat" element={<CommunityChat />} />
+            <Route path="/community/chat" element={<Navigate to="/community" replace />} />
             <Route path="/community/groups" element={<CommunityGroups />} />
             <Route path="/community/create" element={<CreateRecipePost />} />
 
@@ -122,9 +120,9 @@ export default function App() {
             <Route path="/recipes/:id"    element={<RecipeDetails />} />
 
             {/* Planning */}
-            <Route path="/my-menu"        element={<MakerOnlyRoute><MyMenu /></MakerOnlyRoute>} />
-            <Route path="/inventory"      element={<MakerOnlyRoute><Inventory /></MakerOnlyRoute>} />
-            <Route path="/shopping"       element={<MakerOnlyRoute><ShoppingCart /></MakerOnlyRoute>} />
+            <Route path="/my-menu"        element={<Navigate to="/weekly-menu" replace />} />
+            <Route path="/inventory"      element={<Inventory />} />
+            <Route path="/shopping"       element={<ShoppingCart />} />
 
             {/* Profile & Saved */}
             <Route path="/profile"        element={<Profile />} />

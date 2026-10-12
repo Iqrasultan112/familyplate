@@ -13,6 +13,10 @@ router.post('/register', rateLimit({ limit: 12, windowMs: 60 * 60 * 1000, messag
     const { password, allergies, dietaryPreferences, dislikes } = req.body;
     const name = String(req.body.name || '').trim().slice(0, 80);
     const email = String(req.body.email || '').trim().toLowerCase();
+    // Planner is the default; allow the signup form to save an explicit
+    // family-member choice too. Family membership itself remains invite-based.
+    const requestedRole = String(req.body.role || 'maker').toLowerCase();
+    const role = ['maker', 'member'].includes(requestedRole) ? requestedRole : 'maker';
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Please provide name, email and password' });
     }
@@ -32,7 +36,7 @@ router.post('/register', rateLimit({ limit: 12, windowMs: 60 * 60 * 1000, messag
         name,
         email,
         password: hashedPassword,
-        role: 'member',
+        role,
         allergies: typeof allergies === 'object' ? JSON.stringify(allergies) : allergies || null,
         dietaryPreferences: typeof dietaryPreferences === 'object' ? JSON.stringify(dietaryPreferences) : dietaryPreferences || null,
         dislikes: dislikes || null

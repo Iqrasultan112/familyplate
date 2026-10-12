@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Heart, MessageCircle, Plus, Search, Clock, Utensils,
-  Mic, PenLine, ChefHat, Users, BookOpen, Send, X, CornerDownRight
+  Heart, MessageCircle, Plus, Search, Clock,
+  Mic, ChefHat, Users, BookOpen, Send, ImagePlus, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
@@ -16,6 +16,8 @@ export default function CommunityHome() {
   const [search, setSearch]             = useState('');
   const [loading, setLoading]           = useState(false);
   const [quickContent, setQuickContent] = useState('');
+  const [quickImage, setQuickImage] = useState(null);
+  const [quickImagePreview, setQuickImagePreview] = useState('');
   const [quickType, setQuickType]       = useState('share');
   const [quickRecipeId, setQuickRecipeId] = useState('');
   const [myRecipes, setMyRecipes]       = useState([]);
@@ -25,6 +27,13 @@ export default function CommunityHome() {
   const [loadingComments, setLoadingComments]   = useState({});
   const navigate                        = useNavigate();
   const { user }                        = useAuthStore();
+
+  useEffect(() => {
+    if (!quickImage) { setQuickImagePreview(''); return undefined; }
+    const preview = URL.createObjectURL(quickImage);
+    setQuickImagePreview(preview);
+    return () => URL.revokeObjectURL(preview);
+  }, [quickImage]);
 
   useEffect(() => {
     fetchPosts(1, true);
@@ -69,13 +78,22 @@ export default function CommunityHome() {
 
     setSubmitting(true);
     try {
+      let uploadedImage = null;
+      if (quickImage) {
+        const form = new FormData();
+        form.append('image', quickImage);
+        const upload = await api.post('/recipes/images', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+        uploadedImage = upload.data.image;
+      }
       const res = await api.post('/community/posts', {
         content: quickContent.trim(),
         type: quickType,
-        recipeId: quickType === 'share' && quickRecipeId ? parseInt(quickRecipeId) : undefined
+        recipeId: quickType === 'share' && quickRecipeId ? parseInt(quickRecipeId) : undefined,
+        image: uploadedImage
       });
       toast.success('Post published to community!');
       setQuickContent('');
+      setQuickImage(null);
       setQuickRecipeId('');
       // Prepend to feed
       setPosts(prev => [res.data, ...prev]);
@@ -143,13 +161,13 @@ export default function CommunityHome() {
   };
 
   return (
-    <div className="page-shell max-w-3xl space-y-6">
+    <div className="page-shell max-w-4xl space-y-6">
 
       {/* Header */}
       <div className="page-heading flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="page-title">Community Kitchen</h1>
-          <p className="page-subtitle">Share authentic recipes, swap tips, and ask fellow foodies</p>
+          <p className="page-subtitle">Home-cooked dishes, family recipes, dawat menus, and kitchen tips—all in one photo-friendly feed.</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => navigate('/community/groups')} className="btn-secondary text-xs py-2">
@@ -178,14 +196,14 @@ export default function CommunityHome() {
                 onClick={() => setQuickType('share')}
                 className={`text-xs px-2.5 py-1 rounded-lg font-semibold transition-colors ${quickType === 'share' ? 'bg-primary-800 text-white' : 'text-primary-600 hover:bg-primary-50'}`}
               >
-                Recipe Post
+                Share a dish
               </button>
               <button
                 type="button"
                 onClick={() => setQuickType('request')}
                 className={`text-xs px-2.5 py-1 rounded-lg font-semibold transition-colors ${quickType === 'request' ? 'bg-primary-800 text-white' : 'text-primary-600 hover:bg-primary-50'}`}
               >
-                Food Query
+                Ask a question
               </button>
             </div>
           </div>
@@ -196,6 +214,25 @@ export default function CommunityHome() {
             value={quickContent}
             onChange={e => setQuickContent(e.target.value)}
           />
+
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="btn-secondary min-h-10 cursor-pointer px-3 py-2 text-xs">
+              <ImagePlus className="h-4 w-4" /> Add a food photo
+              <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={event => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 6 * 1024 * 1024) {
+                  toast.error('Choose a JPG, PNG, or WebP photo under 6 MB.');
+                  event.target.value = '';
+                  return;
+                }
+                setQuickImage(file);
+              }} />
+            </label>
+            {quickImage && <span className="text-xs text-primary-700">{quickImage.name}</span>}
+            {quickImage && <button type="button" onClick={() => setQuickImage(null)} className="inline-flex min-h-10 items-center gap-1 rounded-xl px-2 text-xs font-semibold text-primary-700 hover:bg-primary-50"><Trash2 className="h-3.5 w-3.5" />Remove photo</button>}
+          </div>
+          {quickImagePreview && <img src={quickImagePreview} alt="Selected food for your post" className="max-h-72 w-full rounded-2xl border border-primary-100 object-cover" />}
 
           {quickType === 'share' && myRecipes.length > 0 && (
             <div className="flex items-center gap-2">
@@ -248,9 +285,9 @@ export default function CommunityHome() {
         </div>
         <div className="flex border-t border-primary-100">
           {[
-            { id: 'all',     label: 'All Posts',  icon: BookOpen },
-            { id: 'share',   label: 'Recipes',    icon: ChefHat  },
-            { id: 'request', label: 'Queries',    icon: Users    },
+            { id: 'all',     label: 'All posts',  icon: BookOpen },
+            { id: 'share',   label: 'Dishes & stories',    icon: ChefHat  },
+            { id: 'request', label: 'Questions',    icon: Users    },
           ].map(tab => (
             <button
               key={tab.id}
@@ -297,7 +334,7 @@ export default function CommunityHome() {
                 </p>
               </div>
               {post.type === 'share' ? (
-                <span className="badge-purple text-[10px]">Recipe</span>
+                <span className="badge-purple text-[10px]">{post.recipe ? 'Recipe' : 'Kitchen story'}</span>
               ) : (
                 <span className="badge-amber text-[10px]">Query</span>
               )}
@@ -308,16 +345,16 @@ export default function CommunityHome() {
               <p className="text-sm text-primary-900 leading-relaxed whitespace-pre-line">{post.content}</p>
             </div>
 
+            {(post.image || post.recipe) && <div className="px-5 pb-4">
+              <RecipePhoto recipe={{ name: post.recipe?.name || 'Community food photo', ingredients: post.recipe?.ingredients, image: post.image || post.recipe?.image }} alt={post.recipe?.name ? `Photo of ${post.recipe.name}` : 'Photo shared with this post'} className="max-h-[32rem] w-full rounded-2xl border border-primary-100 object-cover" loading="lazy" />
+            </div>}
+
             {/* Attached Recipe Preview Card */}
             {post.recipe && (
               <div
                 onClick={() => navigate(`/recipes/${post.recipe.id}`)}
                 className="mx-5 mb-4 bg-[#F9F7F4] border border-primary-200 p-3.5 rounded-xl flex items-center gap-4 cursor-pointer hover:border-primary-400 transition-all group"
               >
-                <div className="relative w-16 h-16 bg-primary-100 rounded-xl flex-shrink-0 flex items-center justify-center overflow-hidden border border-primary-200">
-                  <Utensils className="absolute w-6 h-6 text-primary-600" aria-hidden="true" />
-                  <RecipePhoto recipe={post.recipe} className="relative w-full h-full object-cover group-hover:scale-105 transition-transform" alt={post.recipe.name} />
-                </div>
                 <div className="flex-1 min-w-0">
                   <span className="text-[10px] font-bold text-primary-600 uppercase tracking-widest">Featured Recipe</span>
                   <p className="font-bold text-primary-950 text-sm truncate group-hover:text-primary-800 transition-colors">

@@ -31,7 +31,7 @@ export default function FamilyHome() {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  const { user } = useAuthStore();
+  const { user, updateUser } = useAuthStore();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -62,6 +62,7 @@ export default function FamilyHome() {
         expectedMembers: parseInt(expectedMembers) || 4
       });
       setFamily(res.data.family || res.data);
+      updateUser({ role: 'maker' });
       toast.success('Family created successfully! 🏠');
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to create family');
@@ -130,9 +131,9 @@ export default function FamilyHome() {
           </p>
         </div>
 
-        <div className={`grid ${user?.role === 'maker' ? 'md:grid-cols-2' : 'md:grid-cols-1'} max-w-2xl mx-auto gap-6`}>
+        <div className="grid max-w-2xl mx-auto gap-6 md:grid-cols-2">
           {/* Create Family Card */}
-          {user?.role === 'maker' && <div className="card p-6 md:p-8 border rounded-2xl shadow-sm bg-white space-y-5">
+          <div className="card p-6 md:p-8 border rounded-2xl shadow-sm bg-white space-y-5">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
                 <ChefHat className="w-5 h-5" />
@@ -179,7 +180,7 @@ export default function FamilyHome() {
                 </Link>
               </div>
             </form>
-          </div>}
+          </div>
 
           {/* Join Existing Family Card */}
           <div className="card p-6 md:p-8 border rounded-2xl shadow-sm bg-white space-y-5">

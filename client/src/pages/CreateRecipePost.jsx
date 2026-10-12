@@ -2,15 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
-import { ArrowLeft, Send, Sparkles, ChefHat, Users } from 'lucide-react';
+import { ArrowLeft, Send, Sparkles, ChefHat, Users, ImagePlus, Trash2 } from 'lucide-react';
 
 export default function CreateRecipePost() {
   const [tab, setTab] = useState('share'); // 'share' | 'request'
   const [content, setContent] = useState('');
+  const [photo, setPhoto] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState('');
   const [recipeId, setRecipeId] = useState('');
   const [myRecipes, setMyRecipes] = useState([]);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!photo) { setPhotoPreview(''); return undefined; }
+    const preview = URL.createObjectURL(photo);
+    setPhotoPreview(preview);
+    return () => URL.revokeObjectURL(preview);
+  }, [photo]);
 
   useEffect(() => {
     if (tab === 'share') fetchMyRecipes();
@@ -31,10 +40,18 @@ export default function CreateRecipePost() {
 
     setLoading(true);
     try {
+      let uploadedImage = null;
+      if (photo) {
+        const form = new FormData();
+        form.append('image', photo);
+        const upload = await api.post('/recipes/images', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+        uploadedImage = upload.data.image;
+      }
       await api.post('/community/posts', {
         type: tab,
         content,
-        recipeId: tab === 'share' && recipeId ? recipeId : undefined
+        recipeId: tab === 'share' && recipeId ? recipeId : undefined,
+        image: uploadedImage
       });
       toast.success('Post created successfully!');
       navigate('/community');
@@ -95,6 +112,24 @@ export default function CreateRecipePost() {
                 </div>
 
                 <div>
+                  <p className="label">Add a photo of your food</p>
+                  <label className="btn-secondary min-h-11 cursor-pointer">
+                    <ImagePlus className="h-4 w-4" /> Choose food photo
+                    <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={event => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 6 * 1024 * 1024) {
+                        toast.error('Choose a JPG, PNG, or WebP photo under 6 MB.');
+                        event.target.value = '';
+                        return;
+                      }
+                      setPhoto(file);
+                    }} />
+                  </label>
+                  {photo && <div className="mt-3 flex items-center gap-3"><img src={photoPreview} alt="Food photo preview" className="h-24 w-24 rounded-xl object-cover" /><span className="min-w-0 flex-1 truncate text-sm text-primary-800">{photo.name}</span><button type="button" onClick={() => setPhoto(null)} className="btn-ghost text-xs"><Trash2 className="h-4 w-4" /> Remove</button></div>}
+                </div>
+
+                <div>
                   <label className="label">Attach a Saved Recipe (Optional)</label>
                   <select 
                     className="input" 
@@ -125,6 +160,23 @@ export default function CreateRecipePost() {
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                   />
+                </div>
+                <div>
+                  <p className="label">Add a helpful food photo (optional)</p>
+                  <label className="btn-secondary min-h-11 cursor-pointer">
+                    <ImagePlus className="h-4 w-4" /> Choose photo
+                    <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={event => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 6 * 1024 * 1024) {
+                        toast.error('Choose a JPG, PNG, or WebP photo under 6 MB.');
+                        event.target.value = '';
+                        return;
+                      }
+                      setPhoto(file);
+                    }} />
+                  </label>
+                  {photo && <div className="mt-3 flex items-center gap-3"><img src={photoPreview} alt="Food photo preview" className="h-24 w-24 rounded-xl object-cover" /><span className="min-w-0 flex-1 truncate text-sm text-primary-800">{photo.name}</span><button type="button" onClick={() => setPhoto(null)} className="btn-ghost text-xs"><Trash2 className="h-4 w-4" /> Remove</button></div>}
                 </div>
               </>
             )}

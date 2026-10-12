@@ -1,6 +1,6 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
-import { authenticate, requireMaker } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { randomBytes } from 'crypto';
 
 const router = express.Router();
@@ -10,7 +10,7 @@ const generateCode = () => randomBytes(8).toString('hex').toUpperCase();
 
 router.use(authenticate);
 
-router.post('/create', requireMaker, async (req, res) => {
+router.post('/create', async (req, res) => {
   try {
     const name = String(req.body.name || '').trim().slice(0, 80);
     const expectedMembers = Math.min(50, Math.max(1, Number.parseInt(req.body.expectedMembers, 10) || 4));

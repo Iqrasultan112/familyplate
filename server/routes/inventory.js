@@ -1,11 +1,13 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
-import { authenticate, requireMaker } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
+import { sameIngredient } from '../lib/foodMatching.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-router.use(authenticate, requireMaker);
+// Pantry data is private to each account and can be managed without a family.
+router.use(authenticate);
 
 router.get('/', async (req, res) => {
   try {
@@ -39,6 +41,27 @@ router.post('/', async (req, res) => {
     res.json(item);
   } catch (error) {
     res.status(500).json({ error: 'Failed to add inventory item' });
+  }
+});
+
+router.post('/bulk', async (req, res) => {
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items) || items.length > 100) return res.status(400).json({ error: 'Choose up to 100 pantry items' });
+    const existing = await prisma.inventory.findMany({ where: { userId: req.user.id }, select: { ingredient: true } });
+    const seen = [...existing.map(item => item.ingredient)];
+    const data = [];
+    for (const item of items) {
+      const ingredient = String(item.ingredient || item.name || '').trim().slice(0, 100);
+      const quantity = String(item.quantity || '1 unit').trim().slice(0, 60);
+      if (!ingredient || seen.some(name => sameIngredient(name, ingredient))) continue;
+      seen.push(ingredient);
+      data.push({ ingredient, quantity, userId: req.user.id });
+    }
+    if (data.length) await prisma.inventory.createMany({ data });
+    res.json({ message: 'Pantry updated', added: data.length, skipped: items.length - data.length });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to add pantry items' });
   }
 });
 

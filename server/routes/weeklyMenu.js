@@ -1,6 +1,6 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
-import { authenticate, requireMaker } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { sameIngredient } from '../lib/foodMatching.js';
 
 const router = express.Router();
@@ -32,7 +32,7 @@ router.get('/family/:familyId', async (req, res) => {
   }
 });
 
-router.post('/', requireMaker, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { familyId, recipeId, date, eventId, servings } = req.body;
     const mealType = ['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Side dish'].includes(req.body.mealType) ? req.body.mealType : 'Dinner';
@@ -95,7 +95,7 @@ router.post('/', requireMaker, async (req, res) => {
   }
 });
 
-router.patch('/:id/replace', requireMaker, async (req, res) => {
+router.patch('/:id/replace', async (req, res) => {
   try {
     const id = Number.parseInt(req.params.id, 10);
     const recipeId = Number.parseInt(req.body.recipeId, 10);
@@ -127,7 +127,7 @@ const canManage = async (item, userId) => {
   return item.userId === userId;
 };
 
-router.patch('/:id', requireMaker, async (req, res) => {
+router.patch('/:id', async (req, res) => {
   try {
     const id = Number.parseInt(req.params.id, 10);
     if (!Number.isInteger(id)) return res.status(400).json({ error: 'Choose a valid planned meal' });
@@ -152,7 +152,7 @@ router.patch('/:id', requireMaker, async (req, res) => {
   } catch { res.status(500).json({ error: 'Could not update the planned meal' }); }
 });
 
-router.post('/:id/start', requireMaker, async (req, res) => {
+router.post('/:id/start', async (req, res) => {
   try {
     const id = Number.parseInt(req.params.id, 10);
     const item = await prisma.weeklyMenu.findUnique({ where: { id }, include: { recipe: true, event: true } });
@@ -165,7 +165,7 @@ router.post('/:id/start', requireMaker, async (req, res) => {
   } catch { res.status(500).json({ error: 'Could not start cooking this meal' }); }
 });
 
-router.patch('/:id/servings', requireMaker, async (req, res) => {
+router.patch('/:id/servings', async (req, res) => {
   try {
     const id = Number.parseInt(req.params.id, 10);
     const servings = Number.parseInt(req.body.servings, 10);
@@ -234,7 +234,7 @@ const parseAmount = (value, ingredientName = '') => {
   return { amount, unit: baseUnit };
 };
 
-router.post('/:id/complete', requireMaker, async (req, res) => {
+router.post('/:id/complete', async (req, res) => {
   try {
     const id = Number.parseInt(req.params.id, 10);
     const result = await prisma.$transaction(async tx => {
@@ -295,7 +295,7 @@ router.post('/:id/complete', requireMaker, async (req, res) => {
   } catch { res.status(500).json({ error: 'Could not finish cooking and update pantry' }); }
 });
 
-router.delete('/:id', requireMaker, async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const id = Number.parseInt(req.params.id, 10);
     const item = await prisma.weeklyMenu.findUnique({ where: { id } });

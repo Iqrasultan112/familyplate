@@ -9,15 +9,20 @@ router.use(authenticate);
 
 router.post('/posts', async (req, res) => {
   try {
-    const { content, type, recipeId } = req.body;
+    const { content, type, recipeId, image } = req.body;
     if (!content || !content.trim()) {
       return res.status(400).json({ error: 'Post content is required' });
+    }
+    const imageUrl = image ? String(image).trim() : null;
+    if (imageUrl && !(/^\/uploads\/[\w.-]+$/i.test(imageUrl) || /^https:\/\//i.test(imageUrl))) {
+      return res.status(400).json({ error: 'Choose a valid uploaded photo for this post' });
     }
 
     const post = await prisma.communityPost.create({
       data: {
         content: content.trim(),
         type: type || 'share',
+        image: imageUrl,
         userId: req.user.id,
         recipeId: recipeId ? parseInt(recipeId) : null
       },

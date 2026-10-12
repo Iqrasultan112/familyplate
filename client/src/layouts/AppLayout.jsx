@@ -2,80 +2,58 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, CalendarDays, BookOpen, ShoppingCart,
-  User, LogOut, Sparkles, ThumbsUp, Package, Menu, X,
-  UtensilsCrossed, Globe, ChevronRight, MessageCircle, ChefHat
+  LogOut, Sparkles, Package, Menu, X,
+  UtensilsCrossed, Globe, ChevronRight, MessageCircle, ThumbsUp
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import NotificationBell from '../components/NotificationBell';
 import Avatar from '../components/Avatar';
-import MealPlannerChat from '../components/MealPlannerChat';
-import api from '../lib/api';
-import toast from 'react-hot-toast';
+import MealChatPopup from '../components/MealChatPopup';
 
 const navGroups = [
   {
-    label: 'Your day',
-    items: [{ path: '/dashboard', label: 'Home', icon: LayoutDashboard }],
-  },
-  {
-    label: 'Meals & family',
+    label: 'Plan meals',
     items: [
-      { path: '/weekly-menu',        label: 'Weekly meal plan',  icon: CalendarDays },
-      { path: '/family/suggestions', label: 'Meal ideas',        icon: Sparkles },
-      { path: '/family/voting',      label: 'Family vote',       icon: ThumbsUp },
-      { path: '/family/requests',    label: 'Meal requests',     icon: UtensilsCrossed },
-      { path: '/family/events',      label: 'Special occasions', icon: CalendarDays },
-      { path: '/family/chat',        label: 'Family messages',   icon: MessageCircle },
-      { path: '/family',             label: 'Family space',      icon: Users },
+      { path: '/dashboard', label: 'Home', icon: LayoutDashboard },
+      { path: '/weekly-menu', label: 'Weekly plan', icon: CalendarDays },
+      { path: '/family/suggestions', label: 'Meal ideas', icon: Sparkles },
+      { path: '/family/meal-chat', label: 'AI meal chat', icon: MessageCircle },
     ],
   },
   {
     label: 'Kitchen',
     items: [
-      { path: '/inventory', label: 'What’s in my kitchen', icon: Package      },
-      { path: '/shopping',  label: 'Shopping list',         icon: ShoppingCart },
-      { path: '/my-menu',   label: 'My meal calendar',      icon: CalendarDays },
+      { path: '/inventory', label: 'Pantry', icon: Package },
+      { path: '/shopping', label: 'Shopping list', icon: ShoppingCart },
     ],
   },
   {
-    label: 'Recipes & people',
+    label: 'Together',
     items: [
-      { path: '/recipes',   label: 'Find recipes', icon: BookOpen },
-      { path: '/recipes/ai', label: 'Create a recipe', icon: Sparkles },
-      { path: '/saved', label: 'My recipe library', icon: BookOpen },
+      { path: '/family/voting', label: 'Family vote', icon: ThumbsUp },
+      { path: '/community/groups', label: 'Friends & group chat', icon: Users },
+      { path: '/family', label: 'Family space', icon: Users },
       { path: '/community', label: 'Community kitchen', icon: Globe },
-      { path: '/community/groups', label: 'Friends & relatives', icon: Users },
-      { path: '/community/chat', label: 'Community chat', icon: MessageCircle },
     ],
   },
   {
-    label: 'You',
-    items: [{ path: '/profile', label: 'Profile', icon: User }],
+    label: 'Recipes',
+    items: [
+      { path: '/recipes', label: 'Find recipes', icon: BookOpen },
+      { path: '/saved', label: 'Saved recipes', icon: BookOpen },
+    ],
   },
 ];
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
-  const isMaker = user?.role === 'maker';
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
-  const [family, setFamily] = useState(null);
-  const [chatServings, setChatServings] = useState(4);
-  const [familyLoading, setFamilyLoading] = useState(true);
-  const [expandedGroups, setExpandedGroups] = useState(() => new Set(['Your day', 'Meals & family', 'Kitchen', 'Recipes & people']));
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set(['Plan meals', 'Kitchen', 'Together']));
   const desktopNavRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
   const handleLogout = () => { logout(); navigate('/login'); };
-
-  useEffect(() => {
-    let active = true;
-    api.get('/family/mine')
-      .then(({ data }) => { if (active) setFamily(data?.family || data || null); })
-      .catch(() => { if (active) setFamily(null); })
-      .finally(() => { if (active) setFamilyLoading(false); });
-    return () => { active = false; };
-  }, []);
 
   useEffect(() => {
     if (!chatOpen) return undefined;
@@ -84,33 +62,10 @@ export default function AppLayout() {
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [chatOpen]);
 
-  const sendMealToVote = async recipe => {
-    if (!family?.id) return toast.error('Join or create a family first.');
-    try {
-      const { data: saved } = await api.post('/recipes', {
-        name: recipe.name, ingredients: recipe.ingredients || [], instructions: recipe.instructions || [],
-        prepTime: recipe.prepTime, cookTime: recipe.cookTime, servings: recipe.servings || chatServings,
-        image: recipe.image || null, sourceUrl: recipe.sourceUrl, nutrition: recipe.nutrition
-      });
-      await api.post('/mealRequests', {
-        mealName: recipe.name, recipeId: saved.id, familyId: family.id,
-        requestedDate: new Date().toISOString(),
-        message: `Suggested from the meal helper for ${recipe.servings || chatServings} people.`
-      });
-      toast.success('Sent to your family for a vote.');
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'Could not send this meal for a vote. Please try again.');
-    }
-  };
-  const currentPage = navGroups.flatMap(group => group.items)
+  const currentPage = location.pathname === '/family/meal-chat' ? 'Meal helper' : navGroups.flatMap(group => group.items)
     .filter(item => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))
     .sort((a, b) => b.path.length - a.path.length)[0]?.label || 'FamilyPlate';
-  const visibleNavGroups = navGroups.map(group => ({
-    ...group,
-    items: group.items
-      .filter(item => isMaker || !['/inventory', '/shopping', '/my-menu'].includes(item.path))
-      .map(item => !isMaker && item.path === '/family/events' ? { ...item, label: 'Family gatherings' } : item)
-  })).filter(group => group.items.length);
+  const visibleNavGroups = navGroups;
 
   useEffect(() => {
     const currentGroup = visibleNavGroups.find(group => group.items.some(item => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)));
@@ -135,9 +90,9 @@ export default function AppLayout() {
       </NavLink>
 
       <div className="shrink-0 border-b border-primary-100 p-3">
-        <button type="button" onClick={() => { setChatOpen(true); setDrawerOpen(false); }} aria-label="Open meal assistant panel" className="flex w-full items-center gap-3 rounded-2xl border border-primary-200 bg-[#fff4ec] px-3 py-3 text-left text-primary-950 shadow-sm transition hover:border-primary-400 hover:bg-[#ffede1]">
+        <button type="button" onClick={() => { setDrawerOpen(false); setChatOpen(true); }} aria-label="Open meal helper chat" className="flex w-full items-center gap-3 rounded-2xl border border-primary-200 bg-[#fff4ec] px-3 py-3 text-left text-primary-950 shadow-sm transition hover:border-primary-400 hover:bg-[#ffede1]">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary-800 text-white"><MessageCircle className="h-5 w-5" /></span>
-          <span className="min-w-0 flex-1"><strong className="block text-sm">Ask about a meal</strong><span className="mt-0.5 block text-xs text-primary-700">Get a pantry-based suggestion</span></span>
+          <span className="min-w-0 flex-1"><strong className="block text-sm">Meal helper</strong><span className="mt-0.5 block text-xs text-primary-700">Aaj kya pakayen?</span></span>
           <ChevronRight className="h-4 w-4 shrink-0 text-primary-600" />
         </button>
       </div>
@@ -187,12 +142,14 @@ export default function AppLayout() {
 
       {/* User */}
       <div className="shrink-0 p-3 border-t border-primary-100">
-        <div className="flex items-center gap-3 p-3 rounded-2xl bg-primary-50 border border-primary-100">
-          <Avatar user={user} size="sm" />
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-bold text-primary-950 truncate leading-tight">{user?.name}</p>
-            <p className="text-xs text-primary-600 mt-0.5 truncate">{user?.role === 'maker' ? 'Family meal planner' : 'Family member'}</p>
-          </div>
+        <div className="flex items-center gap-2 p-2 rounded-2xl bg-primary-50 border border-primary-100">
+          <NavLink to="/profile" onClick={() => setDrawerOpen(false)} className="flex flex-1 min-w-0 items-center gap-3 rounded-xl p-1 hover:bg-white/80" aria-label="Open my profile">
+            <Avatar user={user} size="sm" />
+            <span className="flex-1 min-w-0">
+              <span className="block text-[13px] font-bold text-primary-950 truncate leading-tight">{user?.name}</span>
+              <span className="block text-xs text-primary-600 mt-0.5 truncate">My profile</span>
+            </span>
+          </NavLink>
           <button onClick={handleLogout} title="Sign out" aria-label="Sign out"
             className="p-1.5 rounded-lg text-primary-400 hover:text-red-700 hover:bg-[#F9EBEA] transition-all">
             <LogOut className="w-3.5 h-3.5" />
@@ -224,21 +181,6 @@ export default function AppLayout() {
         </div>
       )}
 
-      {chatOpen && (
-        <div className="fixed inset-0 z-[70]">
-          <button type="button" aria-label="Close meal assistant" className="absolute inset-0 bg-primary-950/30 backdrop-blur-[2px]" onClick={() => setChatOpen(false)} />
-          <aside role="dialog" aria-modal="true" aria-label="Meal assistant chat" className="absolute inset-y-0 right-0 flex w-full max-w-2xl flex-col border-l border-primary-200 bg-[#fffaf5] shadow-2xl">
-            <div className="min-h-0 flex-1">
-              {familyLoading ? <div className="grid h-full place-items-center text-sm font-medium text-primary-700">Opening your family kitchen…</div> : family?.id ? (
-                <MealPlannerChat family={family} servings={chatServings} onSendToVote={sendMealToVote} compact onClose={() => setChatOpen(false)} />
-              ) : (
-                <div className="mx-auto mt-12 max-w-sm rounded-3xl border border-primary-200 bg-white p-6 text-center shadow-sm"><ChefHat className="mx-auto h-10 w-10 text-primary-700" /><h3 className="mt-3 text-lg font-bold text-primary-950">Set up your family kitchen</h3><p className="mt-2 text-sm leading-6 text-primary-700">Join or create a family to let the assistant use your pantry and meal history.</p><button type="button" onClick={() => { setChatOpen(false); navigate('/family'); }} className="btn-primary mt-4">Go to family setup</button></div>
-              )}
-            </div>
-          </aside>
-        </div>
-      )}
-
       {/* Main */}
       <div className="flex-1 min-w-0 md:ml-72 flex flex-col min-h-screen">
         {/* Top bar */}
@@ -262,39 +204,33 @@ export default function AppLayout() {
               <Avatar user={user} size="sm" />
               <div className="hidden lg:block">
                 <p className="text-[13px] font-bold text-primary-950 leading-tight">{user?.name}</p>
-              <p className="text-xs text-primary-600">{user?.role === 'maker' ? 'Family meal planner' : 'Family member'}</p>
+              <p className="text-xs text-primary-600">{user?.role === 'maker' ? 'Meal planner' : 'Family member'}</p>
               </div>
             </div>
           </div>
         </header>
 
         {/* Content */}
-        <main className={`app-main flex-1 p-4 sm:p-6 lg:p-8 max-w-[1500px] mx-auto w-full pb-24 md:pb-10 ${location.pathname === '/family/meal-chat' ? 'md:pb-0' : ''}`}>
+        <main className={['/family/meal-chat', '/family/chat'].includes(location.pathname) ? 'app-main min-h-0 flex-1 p-0 pb-[calc(4.5rem+env(safe-area-inset-bottom))] max-w-none mx-0 w-full md:pb-0' : 'app-main flex-1 p-4 sm:p-6 lg:p-8 max-w-[1500px] mx-auto w-full pb-24 md:pb-10'}>
           <Outlet />
         </main>
       </div>
 
+      {chatOpen && <MealChatPopup onClose={() => setChatOpen(false)} />}
+
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-white border-t border-primary-200 flex justify-around items-center h-[4.5rem] px-1 shadow-[0_-5px_20px_rgba(71,36,24,0.08)]">
-        {(isMaker ? [
+      <nav aria-label="Quick navigation" className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-white border-t border-primary-200 flex justify-around items-center h-[calc(4.5rem+env(safe-area-inset-bottom))] pb-[env(safe-area-inset-bottom)] px-0.5 shadow-[0_-5px_20px_rgba(71,36,24,0.08)]">
+        {[
           { path: '/dashboard', icon: LayoutDashboard, label: 'Home' },
-          { path: '/weekly-menu', icon: CalendarDays, label: 'Menu' },
-          { path: '/family/meal-chat', icon: MessageCircle, label: 'Meal chat', action: true },
-          { path: '/inventory', icon: Package, label: 'Pantry' },
-          { path: '/family', icon: Users, label: 'Family' },
-        ] : [
-          { path: '/dashboard', icon: LayoutDashboard, label: 'Home' },
-          { path: '/weekly-menu', icon: CalendarDays, label: 'Menu' },
+          { path: '/family/suggestions', icon: Sparkles, label: 'Meal ideas' },
           { path: '/family/voting', icon: ThumbsUp, label: 'Vote' },
-          { path: '/family', icon: Users, label: 'Family' },
-          { path: '/family/meal-chat', icon: MessageCircle, label: 'Meal chat', action: true },
-        ]).map(item => (
-          item.action ? <button key={item.path} type="button" onClick={() => setChatOpen(true)} aria-label="Open meal assistant panel" className="flex flex-col items-center gap-0.5 rounded-xl px-3 py-1.5 text-primary-500 transition-all hover:text-primary-700">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary-800 shadow-sm"><item.icon className="h-5 w-5 text-white" /></div>
-            <span className="text-[11px] font-semibold tracking-normal">Meal chat</span>
-          </button> : <NavLink key={item.path} to={item.path}
+          { path: '/community/groups', icon: Users, label: 'Groups' },
+          { path: '/family/meal-chat', icon: MessageCircle, label: 'AI chat' },
+        ].map(item => (
+          <NavLink key={item.path} to={item.path}
+            aria-label={item.label}
             className={({ isActive }) =>
-              `flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all ${
+              `flex min-w-0 flex-col items-center gap-0.5 px-1.5 py-1.5 rounded-xl transition-all ${
                 isActive ? 'text-primary-900' : 'text-primary-500 hover:text-primary-700'
               }`
             }>
@@ -303,7 +239,7 @@ export default function AppLayout() {
                 <div className={`w-8 h-8 flex items-center justify-center rounded-xl transition-all ${isActive ? 'bg-primary-800 shadow-sm' : ''}`}>
                   <item.icon className={`w-5 h-5 ${isActive ? 'text-white' : ''}`} />
                 </div>
-                <span className="text-[11px] font-semibold tracking-normal">{item.label}</span>
+                <span className="whitespace-nowrap text-[10px] font-semibold tracking-normal">{item.label}</span>
               </>
             )}
           </NavLink>
