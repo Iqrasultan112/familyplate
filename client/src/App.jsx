@@ -13,6 +13,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import Dashboard from './pages/Dashboard';
+import PublicHome from './pages/PublicHome';
 
 // Lazily loaded app pages (code-split per route)
 const FamilyHome        = lazy(() => import('./pages/FamilyHome'));
@@ -77,10 +78,10 @@ export default function App() {
 
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          {/* Root redirect */}
+          {/* Public introduction before account access */}
           <Route
             path="/"
-            element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />}
+            element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <PublicHome />}
           />
 
           {/* ── Auth routes (centered card layout) ── */}
