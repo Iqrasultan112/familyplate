@@ -111,7 +111,7 @@ export default function CommunityChat() {
   return (
     <div className="page-shell max-w-5xl">
     <div className="mx-auto w-full max-w-4xl flex flex-col h-[calc(100dvh-16rem)] min-h-[20rem] bg-white border border-primary-200 rounded-2xl shadow-card relative overflow-hidden">
-      <div className="bg-[#FFF0E6] border-b border-primary-200 p-4 flex-shrink-0 shadow-sm z-10">
+      <div className="bg-[#EAF5EF] border-b border-primary-200 p-4 flex-shrink-0 shadow-sm z-10">
         <h1 className="text-xl font-bold">Share recipes with the community</h1>
         <p className="text-sm text-gray-600">Everyone here can see your messages and recipe tips.</p>
       </div>

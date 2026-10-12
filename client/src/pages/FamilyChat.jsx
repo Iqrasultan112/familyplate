@@ -105,7 +105,7 @@ export default function FamilyChat() {
 
   return (
     <section className="flex h-[calc(100dvh-9rem-env(safe-area-inset-bottom))] min-h-0 w-full flex-col bg-[#fffdfa] md:h-[calc(100dvh-4.5rem)]" aria-label="Family chat">
-      <header className="flex shrink-0 items-center justify-between border-b border-primary-200 bg-[#FFFCF8] px-3 py-2.5 sm:px-6">
+      <header className="flex shrink-0 items-center justify-between border-b border-primary-200 bg-[#FBFDFC] px-3 py-2.5 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <button type="button" onClick={() => navigate('/family')} aria-label="Back to family" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-primary-700 transition hover:bg-primary-50">
             <ArrowLeft className="h-5 w-5" />
@@ -150,7 +150,7 @@ export default function FamilyChat() {
         </div>
       </div>
 
-      <form onSubmit={handleSend} className="shrink-0 border-t border-primary-200 bg-[#FFFCF8] px-3 py-3 sm:px-6">
+      <form onSubmit={handleSend} className="shrink-0 border-t border-primary-200 bg-[#FBFDFC] px-3 py-3 sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl items-end gap-2 rounded-2xl border border-primary-200 bg-white p-2 shadow-sm focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-100">
           <textarea
             rows={1}

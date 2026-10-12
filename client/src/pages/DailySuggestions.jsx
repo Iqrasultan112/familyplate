@@ -168,7 +168,7 @@ export default function DailySuggestions() {
   return (
     <div className="page-shell space-y-5">
       {/* Header Banner */}
-      <section className="page-banner bg-[#FFF0E6]">
+      <section className="page-banner bg-[#EAF5EF]">
         <div className="max-w-2xl">
           <div className="inline-flex items-center gap-2 bg-primary-100 text-primary-900 text-sm font-semibold px-3 py-2 rounded-full mb-3">
             <Sparkles className="w-4 h-4" /> Plan a meal together

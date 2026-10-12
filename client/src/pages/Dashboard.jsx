@@ -60,15 +60,16 @@ export default function Dashboard() {
 
   return (
     <div className="page-shell mx-auto max-w-6xl space-y-6 sm:space-y-8">
-      <section className="rounded-[1.75rem] border border-[#efc0ad] bg-gradient-to-br from-[#fff2e9] via-[#ffeadf] to-[#fbd8ca] p-5 shadow-[0_12px_30px_rgba(101,39,31,0.07)] sm:p-8 lg:p-10">
-        <p className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs font-bold text-primary-700"><CalendarDays className="h-4 w-4" />{formatDate(new Date())}<span aria-hidden="true">·</span>Your family kitchen</p>
+      <section className="relative overflow-hidden rounded-[1.75rem] border border-[#B8DFD0] bg-gradient-to-br from-[#F0F8F3] via-[#E5F3EB] to-[#D5EBDF] p-5 shadow-[0_12px_30px_rgba(23,77,67,0.08)] sm:p-8 lg:p-10">
+        <div className="pointer-events-none absolute -right-10 -top-16 h-64 w-64 rounded-full bg-white/35 blur-2xl" />
+        <p className="relative inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/80 px-3 py-1.5 text-xs font-bold text-primary-700"><CalendarDays className="h-4 w-4" />{formatDate(new Date())}<span aria-hidden="true">·</span>Your family kitchen</p>
         <div className="mt-4 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
           <div>
             <h1 className="text-3xl font-bold leading-tight tracking-tight text-primary-950 sm:text-4xl">{greeting}, {firstName}.</h1>
-            <p className="mt-3 max-w-2xl text-base leading-7 text-primary-800 sm:text-lg">Let’s make today’s food easy. Choose one thing to do, or ask for a meal idea.</p>
-            <p className="mt-1 text-sm text-primary-700">Aaj ke khane ka plan seedha yahan se karein.</p>
+            <p className="mt-3 max-w-2xl text-base leading-7 text-primary-800 sm:text-lg">Your meals, pantry, and family choices—together in one simple place.</p>
+            <p className="mt-1 text-sm text-primary-700">Aaj ka khana plan karein, asaani se.</p>
           </div>
-          <button onClick={() => navigate('/family/meal-chat')} className="btn-primary min-h-14 justify-center px-6 text-base sm:w-fit">
+          <button onClick={() => navigate('/family/meal-chat')} className="btn-primary relative min-h-14 justify-center px-6 text-base sm:w-fit">
             <MessageCircle className="h-5 w-5" /> What should we cook? <span className="hidden sm:inline">· Aaj kya pakayen?</span>
           </button>
         </div>
@@ -80,7 +81,7 @@ export default function Dashboard() {
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-primary-600">Today · Aaj</p>
             <h2 id="today-heading" className="mt-1 text-xl font-bold text-primary-950">What’s on the menu?</h2>
           </div>
-          <button onClick={() => navigate('/weekly-menu')} className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-bold text-primary-800 hover:bg-primary-50">Open weekly plan <ArrowRight className="h-4 w-4" /></button>
+          <button onClick={() => navigate('/weekly-menu')} className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-bold text-primary-800 hover:bg-primary-50">See this week <ArrowRight className="h-4 w-4" /></button>
         </div>
         {todayMeals === null ? (
           <p className="mt-4 rounded-2xl bg-primary-50 px-4 py-4 text-sm text-primary-700">Loading today’s meals…</p>

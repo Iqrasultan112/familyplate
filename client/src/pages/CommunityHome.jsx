@@ -268,7 +268,7 @@ export default function CommunityHome() {
 
       {/* Search + Filter Tabs */}
       <div className="card overflow-hidden p-0 border-primary-200">
-        <div className="p-3 border-b border-primary-100 bg-[#FFFAF5]">
+        <div className="p-3 border-b border-primary-100 bg-[#F7FAF8]">
           <form onSubmit={handleSearch} className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-primary-400 pointer-events-none" />
@@ -371,7 +371,7 @@ export default function CommunityHome() {
             )}
 
             {/* Footer Action Bar */}
-            <div className="flex items-center justify-between px-5 py-3 border-t border-primary-100 bg-[#FFFAF5]">
+            <div className="flex items-center justify-between px-5 py-3 border-t border-primary-100 bg-[#F7FAF8]">
               <div className="flex items-center gap-5">
                 <button
                   onClick={() => toggleLike(post.id)}
@@ -409,7 +409,7 @@ export default function CommunityHome() {
                     <p className="text-xs text-primary-400 italic">No comments yet. Start the conversation!</p>
                   ) : (
                     expandedComments[post.id].map(c => (
-                      <div key={c.id} className="flex items-start gap-3 bg-[#FFFAF5] border border-primary-100 p-3 rounded-xl">
+                      <div key={c.id} className="flex items-start gap-3 bg-[#F7FAF8] border border-primary-100 p-3 rounded-xl">
                         <div className="w-7 h-7 bg-primary-100 text-primary-900 font-bold text-xs rounded-full flex items-center justify-center shrink-0">
                           {c.user?.name?.[0]?.toUpperCase() || 'U'}
                         </div>

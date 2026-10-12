@@ -12,33 +12,23 @@ import MealChatPopup from '../components/MealChatPopup';
 
 const navGroups = [
   {
-    label: 'Plan meals',
+    label: 'Start here',
     items: [
       { path: '/dashboard', label: 'Home', icon: LayoutDashboard },
       { path: '/weekly-menu', label: 'Weekly plan', icon: CalendarDays },
-      { path: '/family/suggestions', label: 'Meal ideas', icon: Sparkles },
       { path: '/family/meal-chat', label: 'AI meal chat', icon: MessageCircle },
-    ],
-  },
-  {
-    label: 'Kitchen',
-    items: [
       { path: '/inventory', label: 'Pantry', icon: Package },
       { path: '/shopping', label: 'Shopping list', icon: ShoppingCart },
     ],
   },
   {
-    label: 'Together',
+    label: 'More features',
     items: [
+      { path: '/family/suggestions', label: 'Meal ideas', icon: Sparkles },
       { path: '/family/voting', label: 'Family vote', icon: ThumbsUp },
       { path: '/community/groups', label: 'Friends & group chat', icon: Users },
       { path: '/family', label: 'Family space', icon: Users },
       { path: '/community', label: 'Community kitchen', icon: Globe },
-    ],
-  },
-  {
-    label: 'Recipes',
-    items: [
       { path: '/recipes', label: 'Find recipes', icon: BookOpen },
       { path: '/saved', label: 'Saved recipes', icon: BookOpen },
     ],
@@ -49,7 +39,7 @@ export default function AppLayout() {
   const { user, logout } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState(() => new Set(['Plan meals', 'Kitchen', 'Together']));
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set(['Start here']));
   const desktopNavRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -79,7 +69,7 @@ export default function AppLayout() {
   const Sidebar = () => (
     <div className="flex flex-col h-full bg-white">
       {/* Logo */}
-      <NavLink to="/dashboard" onClick={() => setDrawerOpen(false)} aria-label="FamilyPlate home" className="flex items-center gap-3 px-5 h-[5rem] border-b border-primary-100 shrink-0 bg-[#FFFCF8] hover:bg-[#FFF7F2] transition-colors">
+      <NavLink to="/dashboard" onClick={() => setDrawerOpen(false)} aria-label="FamilyPlate home" className="flex items-center gap-3 px-5 h-[5rem] border-b border-primary-100 shrink-0 bg-[#FBFDFC] hover:bg-primary-50 transition-colors">
         <div className="w-11 h-11 rounded-2xl bg-primary-800 flex items-center justify-center shadow-sm">
           <UtensilsCrossed className="w-5 h-5 text-white" />
         </div>
@@ -90,7 +80,7 @@ export default function AppLayout() {
       </NavLink>
 
       <div className="shrink-0 border-b border-primary-100 p-3">
-        <button type="button" onClick={() => { setDrawerOpen(false); setChatOpen(true); }} aria-label="Open meal helper chat" className="flex w-full items-center gap-3 rounded-2xl border border-primary-200 bg-[#fff4ec] px-3 py-3 text-left text-primary-950 shadow-sm transition hover:border-primary-400 hover:bg-[#ffede1]">
+        <button type="button" onClick={() => { setDrawerOpen(false); setChatOpen(true); }} aria-label="Open meal helper chat" className="flex w-full items-center gap-3 rounded-2xl border border-primary-200 bg-primary-50 px-3 py-3 text-left text-primary-950 shadow-sm transition hover:border-primary-400 hover:bg-primary-100">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary-800 text-white"><MessageCircle className="h-5 w-5" /></span>
           <span className="min-w-0 flex-1"><strong className="block text-sm">Meal helper</strong><span className="mt-0.5 block text-xs text-primary-700">Aaj kya pakayen?</span></span>
           <ChevronRight className="h-4 w-4 shrink-0 text-primary-600" />
@@ -160,7 +150,7 @@ export default function AppLayout() {
   );
 
   return (
-    <div className="min-h-screen flex bg-[#FFFAF5]">
+    <div className="min-h-screen flex bg-[#F7FAF8]">
       {/* Desktop sidebar */}
       <aside className="hidden md:block w-72 border-r border-primary-200 fixed inset-y-0 z-20 shadow-[8px_0_28px_rgba(71,36,24,0.035)]">
         <Sidebar />
@@ -184,7 +174,7 @@ export default function AppLayout() {
       {/* Main */}
       <div className="flex-1 min-w-0 md:ml-72 flex flex-col min-h-screen">
         {/* Top bar */}
-        <header className="min-h-[4.5rem] bg-[#FFFCF8]/95 backdrop-blur border-b border-primary-200 sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6">
+        <header className="min-h-[4.5rem] bg-[#FBFDFC]/95 backdrop-blur border-b border-primary-200 sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6">
           <button onClick={() => setDrawerOpen(true)} aria-label="Open navigation menu"
             className="md:hidden btn-ghost p-2">
             <Menu className="w-5 h-5" />
