@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { formatDate } from '../lib/utils';
 import api from '../lib/api';
+import useRewardPoints from '../hooks/useRewardPoints';
 import {
   ArrowRight, CalendarDays, Check, ChefHat, MessageCircle, Package,
   ShoppingCart, ThumbsUp, UtensilsCrossed, Users
@@ -15,6 +16,7 @@ const todayKey = () => {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { points, completedMeals } = useRewardPoints(user?.id);
   const navigate = useNavigate();
   const [todayMeals, setTodayMeals] = useState(null);
   const firstName = user?.name?.split(' ')[0] || 'there';
@@ -72,6 +74,22 @@ export default function Dashboard() {
           <button onClick={() => navigate('/family/meal-chat')} className="btn-primary relative min-h-14 justify-center px-6 text-base sm:w-fit">
             <MessageCircle className="h-5 w-5" /> What should we cook? <span className="hidden sm:inline">· Aaj kya pakayen?</span>
           </button>
+        </div>
+      </section>
+
+      <section className="reward-panel rounded-3xl border p-5 shadow-sm sm:p-6" aria-labelledby="reward-heading">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/75 text-2xl shadow-sm" aria-hidden="true">🌟</div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2"><h2 id="reward-heading" className="text-lg font-extrabold">Your kitchen wins</h2><span className="reward-pill rounded-full px-3 py-1 text-xs font-bold">{points} points</span></div>
+            <p className="mt-1 text-sm">Plan a meal to earn 10 points; finish cooking one for 20 more. Every small step counts!</p>
+            <div className="mt-3 flex flex-wrap gap-2" aria-label="Earned badges">
+              <span className={`rounded-full px-3 py-1 text-xs font-bold ${points >= 10 ? 'reward-badge' : 'bg-white/70 text-slate-500'}`}>{points >= 10 ? '🏅' : '🔒'} Meal planner</span>
+              <span className={`rounded-full px-3 py-1 text-xs font-bold ${completedMeals >= 1 ? 'reward-badge' : 'bg-white/70 text-slate-500'}`}>{completedMeals >= 1 ? '👩‍🍳' : '🔒'} Home chef</span>
+              <span className={`rounded-full px-3 py-1 text-xs font-bold ${completedMeals >= 3 ? 'reward-badge' : 'bg-white/70 text-slate-500'}`}>{completedMeals >= 3 ? '✨' : '🔒'} Kitchen star</span>
+            </div>
+          </div>
+          <div className="w-full sm:w-40"><div className="flex justify-between text-xs font-bold"><span>Next milestone</span><span>{points % 50}/50</span></div><div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/70"><div className="reward-progress h-full rounded-full transition-all duration-500" style={{ width: `${points % 50 * 2}%` }} /></div><p className="mt-1 text-xs">Keep your meal plans going</p></div>
         </div>
       </section>
 

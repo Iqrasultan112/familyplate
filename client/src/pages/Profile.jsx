@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, LogOut, Edit2, Check, X } from 'lucide-react';
+import { Camera, LogOut, Edit2, Check, X, Palette } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
 import RecipeCard from '../components/RecipeCard';
+import { themes, useTheme } from '../contexts/ThemeContext';
 
 const Profile = () => {
   const { user, logout, updateUser } = useAuthStore();
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const { theme, setTheme } = useTheme();
 
   const [stats, setStats] = useState({ myRecipes: 0, savedRecipes: 0 });
   const [activeTab, setActiveTab] = useState('myRecipes'); // myRecipes, savedRecipes, myMenu
@@ -229,6 +231,19 @@ const Profile = () => {
         </div> : <div className="mt-4 grid gap-3 sm:grid-cols-3">
           {[['Allergies', foodProfile.allergies], ['Dietary preferences', foodProfile.dietaryPreferences], ['Foods I dislike', foodProfile.dislikes ? foodProfile.dislikes.split(/[\n,;]/).map(item => item.trim()).filter(Boolean) : []]].map(([label, items]) => <div key={label} className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p><p className="mt-2 text-sm text-slate-800">{items.length ? items.join(', ') : 'Nothing added yet'}</p></div>)}
         </div>}
+      </section>
+
+      <section className="card mb-8 p-5 md:p-6" aria-labelledby="theme-heading">
+        <div className="flex items-start gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary-50 text-primary-800"><Palette size={19} /></span>
+          <div><h2 id="theme-heading" className="text-xl font-bold text-gray-900">Choose your theme</h2><p className="mt-1 text-sm text-gray-600">Pick a color style that feels right. Your choice is saved for this account.</p></div>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {themes.map(option => <button key={option.id} type="button" onClick={() => setTheme(option.id)} aria-pressed={theme === option.id} className={`flex min-h-16 items-center gap-3 rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${theme === option.id ? 'border-primary-700 ring-2 ring-primary-200' : 'border-slate-200'}`}>
+            <span aria-hidden="true" className="flex h-9 w-9 shrink-0 overflow-hidden rounded-full border border-black/10"><i className="w-1/2" style={{ backgroundColor: option.colors[0] }} /><i className="w-1/2" style={{ backgroundColor: option.colors[1] }} /></span>
+            <span className="text-sm font-semibold text-slate-800">{option.name}{theme === option.id && <span className="block text-xs font-medium text-primary-700">Selected</span>}</span>
+          </button>)}
+        </div>
       </section>
 
       {/* Tabs */}

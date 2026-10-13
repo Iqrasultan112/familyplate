@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from './store/authStore';
 import LoadingSpinner from './components/LoadingSpinner';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 // Layouts
 import AuthLayout from './layouts/AuthLayout';
@@ -65,6 +66,7 @@ export default function App() {
   useEffect(() => { initialize(); }, [initialize]);
 
   return (
+    <ThemeProvider>
     <BrowserRouter>
       {/* Global toast notifications (HCI: feedback on every action) */}
       <Toaster
@@ -132,5 +134,6 @@ export default function App() {
         </Routes>
       </Suspense>
     </BrowserRouter>
+    </ThemeProvider>
   );
 }

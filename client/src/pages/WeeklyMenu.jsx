@@ -8,6 +8,7 @@ import useAuthStore from '../store/authStore';
 import RecipePhoto from '../components/RecipePhoto';
 import ShoppingIngredientsModal from '../components/ShoppingIngredientsModal';
 import { addMissingRecipeIngredients } from '../lib/addMissingRecipeIngredients';
+import useRewardPoints from '../hooks/useRewardPoints';
 
 const toLocalDateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const mealTypes = ['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Side dish'];
@@ -50,6 +51,7 @@ export default function WeeklyMenu() {
   const [finishing, setFinishing] = useState(false);
   const [startingMealId, setStartingMealId] = useState(null);
   const { user } = useAuthStore();
+  const { award } = useRewardPoints(user?.id);
 
   useEffect(() => { fetchMenu(); }, [currentDate]);
   useEffect(() => {
@@ -148,6 +150,7 @@ export default function WeeklyMenu() {
         }
         const res = await api.post('/weeklyMenu', { date, recipeId: selectedRecipeId, servings, mealType, familyId });
         setMenuItems([...menuItems, res.data]);
+        award(`planned:${res.data.id}`, 10);
         if (planChoice === 'next-week') setCurrentDate(new Date(`${date}T12:00:00`));
         try {
           const addedCount = await addMissingRecipeIngredients(selectedRecipeId);
@@ -207,6 +210,7 @@ export default function WeeklyMenu() {
     setFinishing(true);
     try {
       const { data } = await api.post(`/weeklyMenu/${activeCooking.id}/complete`);
+      if (!['completed', 'cooked'].includes(activeCooking.status)) award(`cooked:${activeCooking.id}`, 20);
       setCookResult(data); setActiveCooking(data.item); setMenuItems(items => items.map(item => item.id === data.item.id ? { ...item, ...data.item } : item));
       const updated = await api.get('/inventory').catch(() => ({ data: pantry })); setPantry(updated.data || pantry);
       toast.success('Meal complete — your pantry has been updated');
