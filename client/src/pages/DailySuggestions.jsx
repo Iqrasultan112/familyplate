@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import api from '../lib/api';
 import { addMissingRecipeIngredients } from '../lib/addMissingRecipeIngredients';
 import RecipePhoto from '../components/RecipePhoto';
+import RecipeVideoLinks from '../components/RecipeVideoLinks';
 import useAuthStore from '../store/authStore';
 import toast from 'react-hot-toast';
 import {
@@ -357,6 +358,7 @@ export default function DailySuggestions() {
                           </ol>
                         </div>
                       )}
+                      <RecipeVideoLinks recipeName={recipe.name} compact />
                       {recipe.nutrition ? <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900"><strong>Estimated per person:</strong> {recipe.nutrition.calories} calories · Protein {recipe.nutrition.proteinG}g · Carbs {recipe.nutrition.carbsG}g · Fat {recipe.nutrition.fatG}g · Fiber {recipe.nutrition.fiberG}g{recipe.nutrition.coveragePercent ? <span className="mt-1 block text-xs text-emerald-800">Based on {recipe.nutrition.coveragePercent}% of ingredients with known nutrition values; amounts are approximate.</span> : null}</p> : <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Nutrition figures are not available for this recipe. Check its ingredients for allergy and diet needs.</p>}
                       {recipe.sourceUrl && <p className="text-xs text-gray-500">Recipe and photo: <a href={recipe.sourceUrl} target="_blank" rel="noreferrer" className="font-semibold underline">{recipe.source || 'TheMealDB'}</a></p>}
                     </div>

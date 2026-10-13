@@ -71,6 +71,11 @@ const parseMenuSchedule = (text, todayKey) => {
 const isFullRecipeIntent = text => /\b(full|complete|detailed|step[- ]by[- ]step|quantities|ingredients and steps)\b/i.test(String(text || ''))
   || /\b(pura|poori|tafseel|detail|mukammal)\b.{0,40}\b(recipe|ripi|tarika|steps)\b/i.test(String(text || ''))
   || /\b(recipe|ripi)\b.{0,40}\b(pura|poori|tafseel|detail|mukammal)\b/i.test(String(text || ''));
+const isRecipeLinkOnlyIntent = text => /^\s*(?:(?:please\s+)?(?:only|just)\s+(?:the\s+)?(?:recipe|ripi|youtube|yt|video|link)|(?:please\s+)?sirf\b.{0,55}\b(?:recipe|ripi|youtube|yt|video|link))\b|\b(?:recipe|ripi)\s+(?:ka|ki|ke)?\s*(?:youtube|yt|video)?\s*link\b|\b(?:youtube|yt|video)\s+link\b/i.test(String(text || ''));
+const makeRecipeVideoLinks = recipeName => [
+  { label: 'Watch a recipe video', query: `${recipeName} recipe` },
+  { label: 'Watch another cooking video', query: `${recipeName} recipe step by step` }
+].map(({ label, query }) => ({ label, url: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}` }));
 const extractChatFoodConstraints = turns => {
   const foodNames = new Set(['rice', 'basmati rice', 'potato', 'spinach', 'spinich', 'chicken', 'beef', 'mutton', 'egg', 'lentil', 'daal', 'tomato', 'onion', 'fish']);
   for (const recipe of RECIPE_DATABASE) for (const ingredient of recipe.ingredients || []) foodNames.add(String(ingredient.name || '').toLowerCase());
@@ -478,7 +483,6 @@ router.post('/meal-chat', async (req, res) => {
     const familyId = Number.isInteger(requestedFamilyId) ? requestedFamilyId : null;
     const message = String(req.body.message || '').trim().slice(0, 1200);
     if (!message) return res.status(400).json({ error: 'Write what you need help deciding' });
-    if (!recipeAiEnabled()) return res.status(503).json({ error: 'Meal chat needs a local Ollama model or a configured AI provider' });
 
     let membership = null;
     let family = null;
@@ -489,6 +493,24 @@ router.post('/meal-chat', async (req, res) => {
       ]);
       if (!membership || !family) return res.status(403).json({ error: 'Join this family to use its meal planner' });
     }
+
+    if (isRecipeLinkOnlyIntent(message)) {
+      const history = Array.isArray(req.body.history) ? req.body.history : [];
+      const lastAssistantRecipe = [...history].reverse()
+        .find(turn => turn?.role === 'assistant' && Array.isArray(turn.recipes) && turn.recipes.length)?.recipes?.[0];
+      const suppliedName = String(req.body.recipeToAdd?.name || '').trim();
+      const referencesCurrentMeal = /\b(this|that|same|meal|dish|yeh|ye|isi|is|iss|woh|wo|usi)\b/i.test(message);
+      const cleanedName = message
+        .replace(/\b(?:please|sirf|only|just|give|send|show|share|find|me|the|a|an|recipe|ripi|link|video|youtube|yt|url|of|for|this|that|same|meal|dish|ka|ki|ke|do|dena|dedo|bhejo|dikhao|chahiye|yeh|ye|isi|is|iss|woh|wo|usi)\b/gi, ' ')
+        .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const recipeName = cleanedName || (referencesCurrentMeal ? suppliedName || String(lastAssistantRecipe || '') : suppliedName || String(lastAssistantRecipe || ''));
+      if (!recipeName) return res.json({ reply: 'Which meal do you want the YouTube recipe links for?', recipes: [], videoLinks: [] });
+      return res.json({ reply: '', recipes: [], videoRecipeName: recipeName, videoLinks: makeRecipeVideoLinks(recipeName) });
+    }
+
+    if (!recipeAiEnabled()) return res.status(503).json({ error: 'Meal chat needs a local Ollama model or a configured AI provider' });
 
     const fromDate = new Date();
     fromDate.setDate(fromDate.getDate() - 90);

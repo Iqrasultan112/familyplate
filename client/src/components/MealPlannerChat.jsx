@@ -6,6 +6,7 @@ import useAuthStore from '../store/authStore';
 import toast from 'react-hot-toast';
 import { sameIngredient } from '../lib/foodMatching';
 import { addMissingRecipeIngredients } from '../lib/addMissingRecipeIngredients';
+import RecipeVideoLinks from './RecipeVideoLinks';
 
 const intro = {
   role: 'assistant',
@@ -168,8 +169,10 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
       });
       setMessages(current => [...current, {
         role: 'assistant',
-        content: data.reply || 'Here is an idea for your meal.',
+        content: data.reply ?? 'Here is an idea for your meal.',
         recipes: Array.isArray(data.recipes) ? data.recipes : [],
+        videoLinks: Array.isArray(data.videoLinks) ? data.videoLinks : [],
+        videoRecipeName: data.videoRecipeName || '',
         menuAction: data.menuAction || null,
         historyUsed: data.historyUsed
       }]);
@@ -282,8 +285,9 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
             <div className={message.role === 'user' ? 'w-fit max-w-[88%] space-y-1.5' : 'w-full max-w-[min(100%,48rem)] space-y-1.5'}>
               <p className={'px-1 text-xs font-bold uppercase tracking-wide ' + (message.role === 'user' ? 'text-right text-primary-700' : 'text-primary-800')}>{message.role === 'user' ? 'You' : 'FamilyPlate assistant'}</p>
               <div className={'rounded-2xl px-4 py-3 sm:px-5 ' + (message.role === 'user' ? 'rounded-tr-md bg-primary-800 text-white shadow-sm' : 'rounded-tl-md border border-primary-200 bg-white text-primary-950 shadow-sm')}>
-                <p className="whitespace-pre-wrap break-words text-[15px] leading-7">{message.content}</p>
-                {message.role === 'assistant' && <button type="button" onClick={() => readAloud(message.content)} className="mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-primary-700 hover:bg-primary-50" aria-label="Read this answer aloud"><Volume2 className="h-4 w-4" /> Read aloud</button>}
+                {message.content && <p className="whitespace-pre-wrap break-words text-[15px] leading-7">{message.content}</p>}
+                {message.videoLinks?.length > 0 && <RecipeVideoLinks recipeName={message.videoRecipeName} links={message.videoLinks} compact showHeading={Boolean(message.content)} />}
+                {message.role === 'assistant' && message.content && <button type="button" onClick={() => readAloud(message.content)} className="mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-primary-700 hover:bg-primary-50" aria-label="Read this answer aloud"><Volume2 className="h-4 w-4" /> Read aloud</button>}
               </div>
               {(message.recipes || []).map((recipe, recipeIndex) => {
                 const recipeKey = `${index}-${recipeIndex}`;
@@ -297,6 +301,7 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
                       <div><h4 className="text-lg font-bold">{recipe.name}</h4>{recipe.description && <p className="mt-1 text-base leading-6 text-primary-800">{recipe.description}</p>}</div>
                       <span className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-2 text-sm font-semibold text-primary-900"><Clock3 className="h-4 w-4" />{recipe.prepTime || 'Prep n/a'} + {recipe.cookTime || 'Cook n/a'}</span>
                     </div>
+                    <RecipeVideoLinks recipeName={recipe.name} compact />
                     {Number.isFinite(recipe.pantryCoverage) && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-950">{pantryIsEmpty ? 'Your pantry is empty, so all listed ingredients need to be bought.' : `${recipe.pantryCoverage}% of ingredients are at home${recipe.missingIngredients?.length ? '. You may need: ' + recipe.missingIngredients.join(', ') : '. You have everything listed.'}`}</p>}
                     <div className="mt-4"><p className="text-base font-bold text-primary-950">Ingredients <span className="font-normal text-primary-700">for {recipe.servings || servings} people</span></p>
                       <ul className="mt-2 grid gap-2 sm:grid-cols-2">{(recipe.ingredients || []).map((ingredient, ingredientIndex) => <li key={ingredient.name + '-' + ingredientIndex} className="flex min-h-11 items-center justify-between gap-3 rounded-lg bg-primary-50 px-3 py-2 text-sm"><span className="font-medium">{ingredient.name} · {ingredient.quantity}</span><span className={'shrink-0 text-xs font-bold ' + (ingredient.inPantry ? 'text-emerald-900' : 'text-amber-900')}>{ingredient.inPantry ? 'At home' : 'Need to get'}</span></li>)}</ul>

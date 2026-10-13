@@ -11,7 +11,6 @@ import {
   Vote,
   ArrowLeft,
   Sparkles,
-  Share2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
@@ -19,6 +18,7 @@ import RecipePhoto from '../components/RecipePhoto';
 import DayPickerModal from '../components/DayPickerModal';
 import ShoppingIngredientsModal from '../components/ShoppingIngredientsModal';
 import { addMissingRecipeIngredients } from '../lib/addMissingRecipeIngredients';
+import RecipeVideoLinks from '../components/RecipeVideoLinks';
 
 export default function RecipeDetails() {
   const { id } = useParams();
@@ -306,6 +306,8 @@ export default function RecipeDetails() {
               ))}
             </div>
           </div>
+
+          <RecipeVideoLinks recipeName={recipe.name} />
       </div>
 
       <DayPickerModal isOpen={showMenuModal} onClose={() => setShowMenuModal(false)} onSelectDay={handleAddToMenu} recipeName={recipe.name} />
