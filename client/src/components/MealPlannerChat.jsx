@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { sameIngredient } from '../lib/foodMatching';
 import { addMissingRecipeIngredients } from '../lib/addMissingRecipeIngredients';
 import RecipeVideoLinks from './RecipeVideoLinks';
+import useRewardPoints from '../hooks/useRewardPoints';
 
 const intro = {
   role: 'assistant',
@@ -17,6 +18,7 @@ const quickPrompts = ['Ready in 30 minutes', 'Use what is in my pantry', 'Sugges
 
 export default function MealPlannerChat({ family, servings = 4, onSendToVote, compact = false, onClose, showPeopleControl = false, familyName = '', onServingsChange }) {
   const { user } = useAuthStore();
+  const { award } = useRewardPoints(user?.id);
   const storageKey = useMemo(() => `familyplate:meal-chat:${family?.id || `personal:${user?.id || 'guest'}`}`, [family?.id, user?.id]);
   const [messages, setMessages] = useState([intro]);
   const [draft, setDraft] = useState('');
@@ -201,21 +203,35 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
   };
 
   const addMissingToShoppingList = async recipe => {
-    const missing = (recipe.ingredients || []).filter(item => item.inPantry === false);
-    if (!missing.length) return 0;
+    const missing = (recipe.ingredients || []).filter(item => item?.inPantry === false || item?.inPantry === 0 || item?.inPantry === 'false');
+    if (!missing.length) {
+      toast('No missing ingredients found for this recipe.');
+      return 0;
+    }
     setAddingShoppingFor(recipe.name);
     try {
       const { data: currentItems } = await api.get('/shopping');
       const pendingNames = (Array.isArray(currentItems) ? currentItems : [])
         .filter(item => !item.isPurchased)
-        .map(item => item.ingredient);
+        .map(item => item.ingredient || item.name || '');
       const items = missing
-        .filter(item => !pendingNames.some(name => sameIngredient(name, item.name)))
-        .map(item => ({ ingredient: item.name, quantity: item.quantity || '1' }));
-      if (items.length) await api.post('/shopping/bulk', { items });
+        .map(item => ({ ingredient: typeof item === 'string' ? item : item.name || item.ingredient, quantity: item.quantity || item.amount || '1' }))
+        .filter(item => item.ingredient && !pendingNames.some(name => sameIngredient(name, item.ingredient)));
+      if (!items.length) {
+        toast('These missing ingredients are already on your shopping list.');
+        return 0;
+      }
+      try {
+        await api.post('/shopping/bulk', { items });
+      } catch {
+        for (const item of items) await api.post('/shopping', item);
+      }
+      const earned = award(`shopping:${recipe.name}:${Date.now()}`, 5);
+      toast.success(`${items.length} missing item${items.length === 1 ? '' : 's'} added to your shopping list 🛒${earned ? ' · +5 kitchen points!' : ''}`);
       return items.length;
     } catch (error) {
-      throw new Error(error.response?.data?.error || 'Could not update your shopping list.');
+      toast.error(error.response?.data?.error || 'Could not add items. Please try again.');
+      return 0;
     } finally { setAddingShoppingFor(''); }
   };
 
@@ -242,13 +258,14 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
       });
       const now = new Date();
       const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      await api.post('/weeklyMenu', {
+      const { data: plannedMeal } = await api.post('/weeklyMenu', {
         recipeId: savedRecipe.id,
         date,
         mealType: planMealType,
         servings: Number.parseInt(recipe.servings, 10) || servings,
         ...(family?.id ? { familyId: family.id } : {})
       });
+      if (award(`planned:${plannedMeal.id}`, 10)) toast.success('🌟 +10 kitchen points — meal planned!');
       setPlannedRecipes(previous => ({ ...previous, [planKey]: true }));
       let shoppingCount = 0;
       try { shoppingCount = await addMissingRecipeIngredients(savedRecipe.id); }

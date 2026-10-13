@@ -18,22 +18,28 @@ const storageKey = userId => `familyplate.theme.v1:${userId || 'guest'}`;
 export function ThemeProvider({ children }) {
   const user = useAuthStore(state => state.user);
   const key = storageKey(user?.id);
-  const [theme, setTheme] = useState(() => {
-    try { return localStorage.getItem(key) || 'sage'; } catch { return 'sage'; }
+  const [selection, setSelection] = useState(() => {
+    let saved = 'sage';
+    try { saved = localStorage.getItem(key) || 'sage'; } catch {}
+    return { key, theme: themes.some(item => item.id === saved) ? saved : 'sage' };
   });
+  const theme = selection.key === key ? selection.theme : 'sage';
 
   useEffect(() => {
     let saved = 'sage';
     try { saved = localStorage.getItem(key) || 'sage'; } catch {}
-    setTheme(themes.some(item => item.id === saved) ? saved : 'sage');
+    setSelection({ key, theme: themes.some(item => item.id === saved) ? saved : 'sage' });
   }, [key]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem(key, theme); } catch {}
-  }, [key, theme]);
+    if (selection.key === key) {
+      try { localStorage.setItem(key, theme); } catch {}
+    }
+  }, [key, selection.key, theme]);
 
-  const value = useMemo(() => ({ theme, setTheme, themes }), [theme]);
+  const setTheme = selected => setSelection({ key, theme: themes.some(item => item.id === selected) ? selected : 'sage' });
+  const value = useMemo(() => ({ theme, setTheme, themes }), [theme, key]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
