@@ -71,7 +71,7 @@ const parseMenuSchedule = (text, todayKey) => {
 const isFullRecipeIntent = text => /\b(full|complete|detailed|step[- ]by[- ]step|quantities|ingredients and steps)\b/i.test(String(text || ''))
   || /\b(pura|poori|tafseel|detail|mukammal)\b.{0,40}\b(recipe|ripi|tarika|steps)\b/i.test(String(text || ''))
   || /\b(recipe|ripi)\b.{0,40}\b(pura|poori|tafseel|detail|mukammal)\b/i.test(String(text || ''));
-const isRecipeLinkOnlyIntent = text => /^\s*(?:(?:please\s+)?(?:only|just)\s+(?:the\s+)?(?:recipe|ripi|youtube|yt|video|vedio|vdio|link)|(?:please\s+)?sirf\b.{0,55}\b(?:recipe|ripi|youtube|yt|video|vedio|vdio|link))\b|\b(?:recipe|ripi)\s+(?:ka|ki|ke)?\s*(?:youtube|yt|video|vedio|vdio)?\s*link\b|\b(?:youtube|yt|video|vedio|vdio)\s+link\b/i.test(String(text || ''));
+const isRecipeLinkOnlyIntent = text => /^\s*(?:(?:please\s+)?(?:only|just)\s+(?:the\s+)?(?:recipe|ripi|youtube|yt|video|vedio|vdio|link)|(?:please\s+)?sirf\b.{0,55}\b(?:recipe|ripi|youtube|yt|video|vedio|vdio|link))\b|\b(?:recipe|ripi)\s+(?:ka|ki|ke)?\s*(?:youtube|yt|video|vedio|vdio)?\s*link\b|\b(?:youtube|yt|video|vedio|vdio)\s+link\b|\b(?:give|send|show|share|find|play|watch)\s+(?:me\s+)?(?:a\s+)?(?:video|vedio|vdio)\s+(?:of|for)\b|\b(?:video|vedio|vdio)\s+(?:of|for)\s+.{1,100}\b(?:recipe|meal|dish)\b/i.test(String(text || ''));
 const youtubeVideoCache = new Map();
 const youtubeSearchUrl = recipeName => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${recipeName} recipe`)}`;
 const findYoutubeVideo = async (recipeName, channelName = '') => {
