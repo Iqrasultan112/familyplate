@@ -80,7 +80,8 @@ const findRecipeVideoLink = async recipeName => {
   const cached = youtubeVideoCache.get(name.toLowerCase());
   if (cached && cached.expiresAt > Date.now()) return cached.links;
 
-  let links = [{ label: `Search ${name} recipe videos on YouTube`, url: youtubeSearchUrl(name), direct: false }];
+  const links = [{ label: `Search ${name} recipes on YouTube`, url: youtubeSearchUrl(name), direct: false }];
+  let directVideo = null;
   try {
     const response = await fetch(youtubeSearchUrl(name), {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36' },
@@ -88,7 +89,7 @@ const findRecipeVideoLink = async recipeName => {
     });
     if (response.ok) {
       const html = await response.text();
-      const rendererPattern = /"videoRenderer":\s*\{\s*"videoId":"([\w-]{11})"[\s\S]{0,5000}?"title":\s*\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/g;
+      const rendererPattern = /"videoRenderer"\s*:\s*\{[\s\S]{0,1600}?"videoId"\s*:\s*"([\w-]{11})"[\s\S]{0,5000}?"title"\s*:\s*\{"runs":\s*\[\{"text"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
       const videos = [];
       let match;
       while ((match = rendererPattern.exec(html)) && videos.length < 12) {
@@ -100,10 +101,47 @@ const findRecipeVideoLink = async recipeName => {
         .map(video => ({ ...video, score: tokens.filter(token => video.title.toLowerCase().includes(token)).length }))
         .filter(video => tokens.length === 0 || video.score >= Math.max(1, Math.ceil(tokens.length * 0.5)))
         .sort((a, b) => b.score - a.score)[0];
-      if (best) links = [{ label: `Watch ${name} recipe video`, url: `https://www.youtube.com/watch?v=${best.id}`, direct: true }];
+      if (best) directVideo = { id: best.id, title: best.title, channel: '' };
     }
   } catch (error) {
     console.warn('YouTube recipe video lookup failed:', error.name || 'request error');
+  }
+  if (!directVideo) {
+    try {
+      const googleVideoUrl = `https://www.google.com/search?tbm=vid&q=${encodeURIComponent(`${name} recipe YouTube`)}`;
+      const response = await fetch(googleVideoUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36' },
+        signal: AbortSignal.timeout(5000)
+      });
+      if (response.ok) {
+        const html = await response.text();
+        const ids = [...html.matchAll(/(?:youtube\.com(?:\\\/|\/)watch(?:\?|&amp;)[^"'\s<>]{0,160}?v=|youtu\.be(?:\\\/|\/))([\w-]{11})/gi)];
+        const id = ids[0]?.[1];
+        if (id) directVideo = { id, title: name, channel: '' };
+      }
+    } catch (error) {
+      console.warn('Google recipe video lookup failed:', error.name || 'request error');
+    }
+  }
+  if (!directVideo) {
+    try {
+      const meals = await searchMealDbRecipes(name);
+      const queryTokens = name.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(token => token.length > 2);
+      const match = meals
+        .map(meal => ({ meal, score: queryTokens.filter(token => String(meal.name || '').toLowerCase().includes(token)).length }))
+        .filter(item => item.score >= Math.max(1, Math.ceil(queryTokens.length * 0.6)))
+        .sort((a, b) => b.score - a.score)[0]?.meal;
+      const videoUrl = match?.youtubeUrl;
+      if (videoUrl && /^https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=[\w-]{11}|youtu\.be\/[\w-]{11})/i.test(videoUrl)) {
+        directVideo = { title: match.name, channel: 'TheMealDB' , url: videoUrl };
+      }
+    } catch (error) {
+      console.warn('Recipe video catalog lookup failed:', error.name || 'request error');
+    }
+  }
+  if (directVideo) {
+    const directUrl = directVideo.url || `https://www.youtube.com/watch?v=${directVideo.id}`;
+    links.push({ label: `Watch ${directVideo.title || name} video${directVideo.channel ? ` by ${directVideo.channel}` : ''}`, url: directUrl, direct: true });
   }
   youtubeVideoCache.set(name.toLowerCase(), { links, expiresAt: Date.now() + 15 * 60 * 1000 });
   return links;
@@ -1753,6 +1791,7 @@ const searchMealDbRecipes = async query => {
         category: meal.strCategory || 'Family meal', prepTime: 'See recipe', cookTime: 'See recipe', servings: '4',
         ingredients, instructions, image: meal.strMealThumb,
         sourceUrl: meal.strSource || `https://www.themealdb.com/meal/${meal.idMeal}`,
+        youtubeUrl: String(meal.strYoutube || '').trim(),
         photoSource: 'TheMealDB', source: 'TheMealDB'
       }];
     });
