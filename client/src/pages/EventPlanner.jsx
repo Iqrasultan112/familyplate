@@ -11,6 +11,9 @@ import {
   ChevronDown, ChevronUp, Star, Users, Trophy, Sparkles
 } from 'lucide-react';
 
+const dishKey = value => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const hasEventDish = (event, name) => (event.weeklyMenus || []).some(item => dishKey(item.recipe?.name) === dishKey(name));
+
 export default function EventPlanner() {
   const [events, setEvents]       = useState([]);
   const [family, setFamily]       = useState(null);
@@ -90,15 +93,19 @@ export default function EventPlanner() {
         prepTime: recipe.prepTime, cookTime: recipe.cookTime, servings: recipe.servings,
         image: recipe.image || null, sourceUrl: recipe.sourceUrl, nutrition: recipe.nutrition
       });
-      await api.post(`/events/${event.id}/suggest`, { recipeName: recipe.name, recipeId: saved.data.id });
+      const { data: suggestionResult } = await api.post(`/events/${event.id}/suggest`, { recipeName: recipe.name, recipeId: saved.data.id });
       setEventIdeas(prev => ({ ...prev, [event.id]: (prev[event.id] || []).filter(item => item.name !== recipe.name) }));
-      toast.success('Recipe added to this event’s family vote');
+      toast.success(suggestionResult.duplicate ? 'This recipe is already in the event vote' : 'Recipe added to this event’s family vote');
       fetchData();
     } catch { toast.error('Could not add this recipe to the event'); }
   };
 
   const addIdeaToCalendar = async (event, recipe) => {
     try {
+      if (hasEventDish(event, recipe.name)) {
+        toast('This recipe is already on the event menu.');
+        return;
+      }
       const eventDate = String(event.date || '').slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
         toast.error('This event needs a valid date before a recipe can be added.');
@@ -285,7 +292,7 @@ export default function EventPlanner() {
                             {idea.sourceUrl && <a href={idea.sourceUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-[11px] text-slate-600 underline">Recipe/photo: {idea.source || 'TheMealDB'}</a>}
                             <div className="mt-3 flex gap-2">
                               <button onClick={() => addIdeaToEvent(evt, idea)} className="btn-primary text-xs flex-1">Send for a vote</button>
-                              {isMaker && <button onClick={() => addIdeaToCalendar(evt, idea)} className="btn-secondary text-xs flex-1">Add to this event</button>}
+                              {isMaker && <button onClick={() => addIdeaToCalendar(evt, idea)} disabled={hasEventDish(evt, idea.name)} className="btn-secondary text-xs flex-1 disabled:cursor-not-allowed disabled:opacity-50">{hasEventDish(evt, idea.name) ? 'Already on event menu' : 'Add to this event'}</button>}
                             </div>
                           </div>
                         </div>

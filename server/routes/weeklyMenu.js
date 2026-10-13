@@ -5,6 +5,7 @@ import { sameIngredient } from '../lib/foodMatching.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const dishKey = value => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 const localDateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
@@ -56,8 +57,18 @@ router.post('/', async (req, res) => {
     const parsedEventId = eventId ? Number.parseInt(eventId, 10) : null;
     if (eventId && !Number.isInteger(parsedEventId)) return res.status(400).json({ error: 'Choose a valid event' });
     if (parsedEventId) {
-      const event = await prisma.event.findUnique({ where: { id: parsedEventId }, select: { familyId: true } });
+      const event = await prisma.event.findUnique({ where: { id: parsedEventId }, select: { familyId: true, date: true } });
       if (!event || event.familyId !== parsedFamilyId) return res.status(400).json({ error: 'Event must belong to the selected family' });
+      const selectedRecipe = await prisma.recipe.findUnique({ where: { id: parsedRecipeId }, select: { name: true } });
+      const eventDayStart = new Date(`${dateKey}T00:00:00.000Z`);
+      const eventDayEnd = new Date(eventDayStart);
+      eventDayEnd.setUTCDate(eventDayEnd.getUTCDate() + 1);
+      const sameDayMenus = await prisma.weeklyMenu.findMany({
+        where: { familyId: parsedFamilyId, eventId: parsedEventId, date: { gte: eventDayStart, lt: eventDayEnd } },
+        include: { recipe: true }
+      });
+      const sameName = sameDayMenus.find(item => dishKey(item.recipe?.name) === dishKey(selectedRecipe?.name));
+      if (sameName) return res.json(sameName);
     }
     
     // The same dish may appear again later in the week; only prevent a duplicate on this day.

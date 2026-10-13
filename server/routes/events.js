@@ -7,6 +7,21 @@ const prisma = new PrismaClient();
 router.use(authenticate);
 
 const familyMember = (familyId, userId) => prisma.familyMember.findUnique({ where: { userId_familyId: { userId, familyId } } });
+const dishKey = value => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const uniqueDishes = (items, getName) => {
+  const seen = new Set();
+  return items.filter(item => {
+    const key = dishKey(getName(item));
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+const presentEvent = event => ({
+  ...event,
+  suggestions: uniqueDishes(event.suggestions.map(({ ballots = [], ...item }) => ({ ...item, myVote: ballots.length > 0 })), item => item.recipeName || item.recipe?.name),
+  weeklyMenus: uniqueDishes(event.weeklyMenus || [], item => item.recipe?.name || `recipe-${item.recipeId}`)
+});
 const canManageFamily = async (familyId, userId) => {
   const [family, member] = await Promise.all([
     prisma.family.findUnique({ where: { id: familyId }, select: { creatorId: true } }),
@@ -17,7 +32,7 @@ const canManageFamily = async (familyId, userId) => {
 const eventForMember = async (id, userId) => {
   const event = await prisma.event.findUnique({ where: { id }, include: { suggestions: { include: { recipe: true, ballots: { where: { userId } } }, orderBy: { voteCount: 'desc' } }, weeklyMenus: { include: { recipe: true }, orderBy: { mealType: 'asc' } } } });
   if (!event || !await familyMember(event.familyId, userId)) return null;
-  return { ...event, suggestions: event.suggestions.map(({ ballots, ...suggestion }) => ({ ...suggestion, myVote: ballots.length > 0 })) };
+  return presentEvent(event);
 };
 
 router.post('/', async (req, res) => {
@@ -39,7 +54,7 @@ router.get('/family/:familyId', async (req, res) => {
     const familyId = Number.parseInt(req.params.familyId, 10);
     if (!await familyMember(familyId, req.user.id)) return res.status(403).json({ error: 'Only family members can see these events' });
     const events = await prisma.event.findMany({ where: { familyId }, include: { suggestions: { include: { recipe: true, ballots: { where: { userId: req.user.id } } }, orderBy: { voteCount: 'desc' } }, weeklyMenus: { include: { recipe: true }, orderBy: { mealType: 'asc' } } }, orderBy: { date: 'asc' } });
-    res.json(events.map(event => ({ ...event, suggestions: event.suggestions.map(({ ballots, ...suggestion }) => ({ ...suggestion, myVote: ballots.length > 0 })) })));
+    res.json(events.map(presentEvent));
   } catch { res.status(500).json({ error: 'Failed to fetch events' }); }
 });
 
@@ -60,6 +75,9 @@ router.post('/:id/suggest', async (req, res) => {
     const recipeName = String(req.body.recipeName || '').trim().slice(0, 120);
     if (!recipeName) return res.status(400).json({ error: 'Add a recipe name' });
     const recipe = Number.isInteger(recipeId) ? await prisma.recipe.findUnique({ where: { id: recipeId } }) : null;
+    const key = dishKey(recipeName);
+    const existing = event.suggestions.find(item => dishKey(item.recipeName || item.recipe?.name) === key);
+    if (existing) return res.json({ ...existing, recipe: existing.recipe || recipe, duplicate: true });
     const suggestion = await prisma.eventSuggestion.create({ data: { eventId, recipeName, recipeId: recipe?.id || null } });
     res.status(201).json({ ...suggestion, recipe });
   } catch { res.status(500).json({ error: 'Failed to suggest dish' }); }
