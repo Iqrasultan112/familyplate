@@ -71,7 +71,7 @@ const parseMenuSchedule = (text, todayKey) => {
 const isFullRecipeIntent = text => /\b(full|complete|detailed|step[- ]by[- ]step|quantities|ingredients and steps)\b/i.test(String(text || ''))
   || /\b(pura|poori|tafseel|detail|mukammal)\b.{0,40}\b(recipe|ripi|tarika|steps)\b/i.test(String(text || ''))
   || /\b(recipe|ripi)\b.{0,40}\b(pura|poori|tafseel|detail|mukammal)\b/i.test(String(text || ''));
-const isRecipeLinkOnlyIntent = text => /^\s*(?:(?:please\s+)?(?:only|just)\s+(?:the\s+)?(?:recipe|ripi|youtube|yt|video|link)|(?:please\s+)?sirf\b.{0,55}\b(?:recipe|ripi|youtube|yt|video|link))\b|\b(?:recipe|ripi)\s+(?:ka|ki|ke)?\s*(?:youtube|yt|video)?\s*link\b|\b(?:youtube|yt|video)\s+link\b/i.test(String(text || ''));
+const isRecipeLinkOnlyIntent = text => /^\s*(?:(?:please\s+)?(?:only|just)\s+(?:the\s+)?(?:recipe|ripi|youtube|yt|video|vedio|vdio|link)|(?:please\s+)?sirf\b.{0,55}\b(?:recipe|ripi|youtube|yt|video|vedio|vdio|link))\b|\b(?:recipe|ripi)\s+(?:ka|ki|ke)?\s*(?:youtube|yt|video|vedio|vdio)?\s*link\b|\b(?:youtube|yt|video|vedio|vdio)\s+link\b/i.test(String(text || ''));
 const youtubeVideoCache = new Map();
 const youtubeSearchUrl = recipeName => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${recipeName} recipe`)}`;
 const findYoutubeVideo = async (recipeName, channelName = '') => {
@@ -561,7 +561,7 @@ router.post('/meal-chat', async (req, res) => {
       const suppliedName = String(req.body.recipeToAdd?.name || '').trim();
       const referencesCurrentMeal = /\b(this|that|same|meal|dish|yeh|ye|isi|is|iss|woh|wo|usi)\b/i.test(message);
       const cleanedName = message
-        .replace(/\b(?:please|sirf|only|just|give|send|show|share|find|me|the|a|an|recipe|ripi|link|video|youtube|yt|url|of|for|this|that|same|meal|dish|ka|ki|ke|do|dena|dedo|bhejo|dikhao|chahiye|yeh|ye|isi|is|iss|woh|wo|usi)\b/gi, ' ')
+        .replace(/\b(?:please|sirf|only|just|give|send|show|share|find|me|the|a|an|recipe|ripi|link|video|vedio|vdio|youtube|yt|url|of|for|this|that|same|meal|dish|ka|ki|ke|do|dena|dedo|bhejo|dikhao|chahiye|yeh|ye|isi|is|iss|woh|wo|usi)\b/gi, ' ')
         .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
         .replace(/\s+/g, ' ')
         .trim();
