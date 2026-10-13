@@ -74,6 +74,32 @@ const isFullRecipeIntent = text => /\b(full|complete|detailed|step[- ]by[- ]step
 const isRecipeLinkOnlyIntent = text => /^\s*(?:(?:please\s+)?(?:only|just)\s+(?:the\s+)?(?:recipe|ripi|youtube|yt|video|link)|(?:please\s+)?sirf\b.{0,55}\b(?:recipe|ripi|youtube|yt|video|link))\b|\b(?:recipe|ripi)\s+(?:ka|ki|ke)?\s*(?:youtube|yt|video)?\s*link\b|\b(?:youtube|yt|video)\s+link\b/i.test(String(text || ''));
 const youtubeVideoCache = new Map();
 const youtubeSearchUrl = recipeName => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${recipeName} recipe`)}`;
+const findYoutubeVideo = async (recipeName, channelName = '') => {
+  const query = `${recipeName} recipe${channelName ? ` ${channelName}` : ''}`;
+  const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+  const response = await fetch(searchUrl, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36' },
+    signal: AbortSignal.timeout(7000)
+  });
+  if (!response.ok) return null;
+  const html = await response.text();
+  const rendererPattern = /"videoRenderer"\s*:\s*\{[\s\S]{0,1600}?"videoId"\s*:\s*"([\w-]{11})"[\s\S]{0,5000}?"title"\s*:\s*\{"runs":\s*\[\{"text"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+  const videos = [];
+  let match;
+  while ((match = rendererPattern.exec(html)) && videos.length < 12) {
+    const title = match[2].replace(/\\u([\da-f]{4})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16))).replace(/\\(["\\])/g, '$1');
+    const nextRenderer = html.indexOf('"videoRenderer"', rendererPattern.lastIndex);
+    const renderer = html.slice(match.index, nextRenderer < 0 ? match.index + 10000 : nextRenderer);
+    const channel = renderer.match(/"ownerText"\s*:\s*\{"runs"\s*:\s*\[\{"text"\s*:\s*"((?:[^"\\]|\\.)*)"/i)?.[1]?.replace(/\\(["\\])/g, '$1') || '';
+    videos.push({ id: match[1], title, channel });
+  }
+  const tokens = recipeName.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(token => token.length > 2);
+  return videos
+    .filter(video => !channelName || video.channel.toLowerCase().includes(channelName.toLowerCase()))
+    .map(video => ({ ...video, score: tokens.filter(token => video.title.toLowerCase().includes(token)).length }))
+    .filter(video => tokens.length === 0 || video.score >= Math.max(1, Math.ceil(tokens.length * 0.5)))
+    .sort((a, b) => b.score - a.score)[0] || null;
+};
 const findRecipeVideoLink = async recipeName => {
   const name = String(recipeName || '').trim().slice(0, 120);
   if (!name) return [];
@@ -81,67 +107,25 @@ const findRecipeVideoLink = async recipeName => {
   if (cached && cached.expiresAt > Date.now()) return cached.links;
 
   const links = [{ label: `Search ${name} recipes on YouTube`, url: youtubeSearchUrl(name), direct: false }];
-  let directVideo = null;
-  try {
-    const response = await fetch(youtubeSearchUrl(name), {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36' },
-      signal: AbortSignal.timeout(7000)
-    });
-    if (response.ok) {
-      const html = await response.text();
-      const rendererPattern = /"videoRenderer"\s*:\s*\{[\s\S]{0,1600}?"videoId"\s*:\s*"([\w-]{11})"[\s\S]{0,5000}?"title"\s*:\s*\{"runs":\s*\[\{"text"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
-      const videos = [];
-      let match;
-      while ((match = rendererPattern.exec(html)) && videos.length < 12) {
-        const title = match[2].replace(/\\u([\da-f]{4})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16))).replace(/\\(["\\])/g, '$1');
-        videos.push({ id: match[1], title });
-      }
-      const tokens = name.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(token => token.length > 2);
-      const best = videos
-        .map(video => ({ ...video, score: tokens.filter(token => video.title.toLowerCase().includes(token)).length }))
-        .filter(video => tokens.length === 0 || video.score >= Math.max(1, Math.ceil(tokens.length * 0.5)))
-        .sort((a, b) => b.score - a.score)[0];
-      if (best) directVideo = { id: best.id, title: best.title, channel: '' };
-    }
-  } catch (error) {
-    console.warn('YouTube recipe video lookup failed:', error.name || 'request error');
-  }
-  if (!directVideo) {
-    try {
-      const googleVideoUrl = `https://www.google.com/search?tbm=vid&q=${encodeURIComponent(`${name} recipe YouTube`)}`;
-      const response = await fetch(googleVideoUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36' },
-        signal: AbortSignal.timeout(5000)
-      });
-      if (response.ok) {
-        const html = await response.text();
-        const ids = [...html.matchAll(/(?:youtube\.com(?:\\\/|\/)watch(?:\?|&amp;)[^"'\s<>]{0,160}?v=|youtu\.be(?:\\\/|\/))([\w-]{11})/gi)];
-        const id = ids[0]?.[1];
-        if (id) directVideo = { id, title: name, channel: '' };
-      }
-    } catch (error) {
-      console.warn('Google recipe video lookup failed:', error.name || 'request error');
-    }
-  }
-  if (!directVideo) {
+  const [directVideo, foodFusionVideo] = await Promise.all([
+    findYoutubeVideo(name).catch(error => { console.warn('YouTube recipe lookup failed:', error.name || 'request error'); return null; }),
+    findYoutubeVideo(name, 'Food Fusion').catch(error => { console.warn('Food Fusion recipe lookup failed:', error.name || 'request error'); return null; })
+  ]);
+  if (directVideo) links.push({ label: `Watch ${name} video${directVideo.channel ? ` by ${directVideo.channel}` : ''}`, url: `https://www.youtube.com/watch?v=${directVideo.id}`, direct: true });
+  if (foodFusionVideo && foodFusionVideo.id !== directVideo?.id) links.push({ label: `Watch ${name} by Food Fusion`, url: `https://www.youtube.com/watch?v=${foodFusionVideo.id}`, direct: true });
+  if (!directVideo && !foodFusionVideo) {
     try {
       const meals = await searchMealDbRecipes(name);
-      const queryTokens = name.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(token => token.length > 2);
-      const match = meals
-        .map(meal => ({ meal, score: queryTokens.filter(token => String(meal.name || '').toLowerCase().includes(token)).length }))
-        .filter(item => item.score >= Math.max(1, Math.ceil(queryTokens.length * 0.6)))
-        .sort((a, b) => b.score - a.score)[0]?.meal;
+      const tokens = name.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(token => token.length > 2);
+      const match = meals.map(meal => ({ meal, score: tokens.filter(token => String(meal.name || '').toLowerCase().includes(token)).length }))
+        .filter(item => item.score >= Math.max(1, Math.ceil(tokens.length * 0.6))).sort((a, b) => b.score - a.score)[0]?.meal;
       const videoUrl = match?.youtubeUrl;
       if (videoUrl && /^https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=[\w-]{11}|youtu\.be\/[\w-]{11})/i.test(videoUrl)) {
-        directVideo = { title: match.name, channel: 'TheMealDB' , url: videoUrl };
+        links.push({ label: `Watch ${match.name} video`, url: videoUrl, direct: true });
       }
     } catch (error) {
       console.warn('Recipe video catalog lookup failed:', error.name || 'request error');
     }
-  }
-  if (directVideo) {
-    const directUrl = directVideo.url || `https://www.youtube.com/watch?v=${directVideo.id}`;
-    links.push({ label: `Watch ${directVideo.title || name} video${directVideo.channel ? ` by ${directVideo.channel}` : ''}`, url: directUrl, direct: true });
   }
   youtubeVideoCache.set(name.toLowerCase(), { links, expiresAt: Date.now() + 15 * 60 * 1000 });
   return links;
