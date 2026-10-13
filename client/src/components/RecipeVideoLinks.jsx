@@ -1,18 +1,49 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ExternalLink, Play } from 'lucide-react';
+import api from '../lib/api';
 import { youtubeRecipeLinks } from '../lib/youtubeRecipeLinks';
 
 export default function RecipeVideoLinks({ recipeName, compact = false, links: suppliedLinks, showHeading = true }) {
-  const links = suppliedLinks?.length ? suppliedLinks : youtubeRecipeLinks(recipeName);
-  if (!links.length) return null;
+  const [resolvedLinks, setResolvedLinks] = useState(suppliedLinks || []);
+  const [loading, setLoading] = useState(!suppliedLinks?.length && Boolean(recipeName));
+
+  useEffect(() => {
+    if (suppliedLinks?.length) {
+      setResolvedLinks(suppliedLinks);
+      setLoading(false);
+      return undefined;
+    }
+    if (!recipeName) {
+      setResolvedLinks([]);
+      setLoading(false);
+      return undefined;
+    }
+    let active = true;
+    setLoading(true);
+    api.post('/ai/youtube-video', { recipeName })
+      .then(({ data }) => {
+        if (active) setResolvedLinks(Array.isArray(data.videoLinks) && data.videoLinks.length ? data.videoLinks : youtubeRecipeLinks(recipeName));
+      })
+      .catch(() => {
+        if (active) setResolvedLinks(youtubeRecipeLinks(recipeName));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [recipeName, suppliedLinks]);
+
+  const links = resolvedLinks;
+  if (!links.length && !loading) return null;
 
   return (
-    <section className={compact ? 'mt-4 rounded-xl border border-red-100 bg-red-50/60 p-3' : 'rounded-2xl border border-red-100 bg-gradient-to-br from-white to-red-50/60 p-5 sm:p-6'} aria-label={`YouTube videos for ${recipeName}`}>
+    <section className={compact ? 'mt-4 rounded-xl border border-red-100 bg-red-50/60 p-3' : 'rounded-2xl border border-red-100 bg-gradient-to-br from-white to-red-50/60 p-5 sm:p-6'} aria-label={`YouTube recipe video for ${recipeName}`}>
       {showHeading && <div className="mb-3 flex items-center gap-2">
         <span className="grid h-8 w-8 place-items-center rounded-lg bg-red-100 text-red-700"><Play className="h-4 w-4" aria-hidden="true" /></span>
-        <h2 className="text-sm font-bold text-primary-950">Related YouTube videos</h2>
+        <h2 className="text-sm font-bold text-primary-950">Recipe video</h2>
       </div>}
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid gap-2">
+        {loading && <p className="text-sm text-primary-700">Finding a recipe video…</p>}
         {links.map(({ label, url }) => (
           <a
             key={label}

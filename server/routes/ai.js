@@ -72,10 +72,42 @@ const isFullRecipeIntent = text => /\b(full|complete|detailed|step[- ]by[- ]step
   || /\b(pura|poori|tafseel|detail|mukammal)\b.{0,40}\b(recipe|ripi|tarika|steps)\b/i.test(String(text || ''))
   || /\b(recipe|ripi)\b.{0,40}\b(pura|poori|tafseel|detail|mukammal)\b/i.test(String(text || ''));
 const isRecipeLinkOnlyIntent = text => /^\s*(?:(?:please\s+)?(?:only|just)\s+(?:the\s+)?(?:recipe|ripi|youtube|yt|video|link)|(?:please\s+)?sirf\b.{0,55}\b(?:recipe|ripi|youtube|yt|video|link))\b|\b(?:recipe|ripi)\s+(?:ka|ki|ke)?\s*(?:youtube|yt|video)?\s*link\b|\b(?:youtube|yt|video)\s+link\b/i.test(String(text || ''));
-const makeRecipeVideoLinks = recipeName => [
-  { label: 'Watch a recipe video', query: `${recipeName} recipe` },
-  { label: 'Watch another cooking video', query: `${recipeName} recipe step by step` }
-].map(({ label, query }) => ({ label, url: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}` }));
+const youtubeVideoCache = new Map();
+const youtubeSearchUrl = recipeName => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${recipeName} recipe`)}`;
+const findRecipeVideoLink = async recipeName => {
+  const name = String(recipeName || '').trim().slice(0, 120);
+  if (!name) return [];
+  const cached = youtubeVideoCache.get(name.toLowerCase());
+  if (cached && cached.expiresAt > Date.now()) return cached.links;
+
+  let links = [{ label: `Search ${name} recipe videos on YouTube`, url: youtubeSearchUrl(name), direct: false }];
+  try {
+    const response = await fetch(youtubeSearchUrl(name), {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36' },
+      signal: AbortSignal.timeout(7000)
+    });
+    if (response.ok) {
+      const html = await response.text();
+      const rendererPattern = /"videoRenderer":\s*\{\s*"videoId":"([\w-]{11})"[\s\S]{0,5000}?"title":\s*\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/g;
+      const videos = [];
+      let match;
+      while ((match = rendererPattern.exec(html)) && videos.length < 12) {
+        const title = match[2].replace(/\\u([\da-f]{4})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16))).replace(/\\(["\\])/g, '$1');
+        videos.push({ id: match[1], title });
+      }
+      const tokens = name.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(token => token.length > 2);
+      const best = videos
+        .map(video => ({ ...video, score: tokens.filter(token => video.title.toLowerCase().includes(token)).length }))
+        .filter(video => tokens.length === 0 || video.score >= Math.max(1, Math.ceil(tokens.length * 0.5)))
+        .sort((a, b) => b.score - a.score)[0];
+      if (best) links = [{ label: `Watch ${name} recipe video`, url: `https://www.youtube.com/watch?v=${best.id}`, direct: true }];
+    }
+  } catch (error) {
+    console.warn('YouTube recipe video lookup failed:', error.name || 'request error');
+  }
+  youtubeVideoCache.set(name.toLowerCase(), { links, expiresAt: Date.now() + 15 * 60 * 1000 });
+  return links;
+};
 const extractChatFoodConstraints = turns => {
   const foodNames = new Set(['rice', 'basmati rice', 'potato', 'spinach', 'spinich', 'chicken', 'beef', 'mutton', 'egg', 'lentil', 'daal', 'tomato', 'onion', 'fish']);
   for (const recipe of RECIPE_DATABASE) for (const ingredient of recipe.ingredients || []) foodNames.add(String(ingredient.name || '').toLowerCase());
@@ -474,6 +506,12 @@ const familyMenuTools = [{
   }
 }];
 
+router.post('/youtube-video', async (req, res) => {
+  const recipeName = String(req.body.recipeName || '').trim().slice(0, 120);
+  if (!recipeName) return res.status(400).json({ error: 'Recipe name is required' });
+  return res.json({ videoLinks: await findRecipeVideoLink(recipeName) });
+});
+
 // Conversational meal planning: each turn is grounded in the caller's family,
 // pantry and recent meal history. The client sends only a short conversation
 // window; the server independently verifies family access and loads private data.
@@ -507,7 +545,7 @@ router.post('/meal-chat', async (req, res) => {
         .trim();
       const recipeName = cleanedName || (referencesCurrentMeal ? suppliedName || String(lastAssistantRecipe || '') : suppliedName || String(lastAssistantRecipe || ''));
       if (!recipeName) return res.json({ reply: 'Which meal do you want the YouTube recipe links for?', recipes: [], videoLinks: [] });
-      return res.json({ reply: '', recipes: [], videoRecipeName: recipeName, videoLinks: makeRecipeVideoLinks(recipeName) });
+      return res.json({ reply: '', recipes: [], videoRecipeName: recipeName, videoLinks: await findRecipeVideoLink(recipeName) });
     }
 
     if (!recipeAiEnabled()) return res.status(503).json({ error: 'Meal chat needs a local Ollama model or a configured AI provider' });
