@@ -99,13 +99,19 @@ export default function EventPlanner() {
 
   const addIdeaToCalendar = async (event, recipe) => {
     try {
+      const eventDate = String(event.date || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
+        toast.error('This event needs a valid date before a recipe can be added.');
+        return;
+      }
       const saved = await api.post('/recipes', {
         name: recipe.name, ingredients: recipe.ingredients, instructions: recipe.instructions,
         prepTime: recipe.prepTime, cookTime: recipe.cookTime, servings: recipe.servings,
         image: recipe.image || null, sourceUrl: recipe.sourceUrl, nutrition: recipe.nutrition
       });
-      await api.post('/weeklyMenu', { date: event.date, recipeId: saved.data.id, familyId: family.id, eventId: event.id, servings: event.guestCount || 4 });
-      toast.success('Added to your calendar on the event date');
+      await api.post('/weeklyMenu', { date: eventDate, recipeId: saved.data.id, familyId: family.id, eventId: event.id, servings: event.guestCount || 4 });
+      toast.success(`Added ${recipe.name} to ${event.name} on its event date`);
+      fetchData();
     } catch (error) { toast.error(error.response?.data?.error || 'Could not add to calendar'); }
   };
 
@@ -279,7 +285,7 @@ export default function EventPlanner() {
                             {idea.sourceUrl && <a href={idea.sourceUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-[11px] text-slate-600 underline">Recipe/photo: {idea.source || 'TheMealDB'}</a>}
                             <div className="mt-3 flex gap-2">
                               <button onClick={() => addIdeaToEvent(evt, idea)} className="btn-primary text-xs flex-1">Send for a vote</button>
-                              {isMaker && <button onClick={() => addIdeaToCalendar(evt, idea)} className="btn-secondary text-xs flex-1">Add to calendar</button>}
+                              {isMaker && <button onClick={() => addIdeaToCalendar(evt, idea)} className="btn-secondary text-xs flex-1">Add to this event</button>}
                             </div>
                           </div>
                         </div>
