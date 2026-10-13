@@ -18,6 +18,8 @@ export default function CommunityGroups() {
   const [isRecording, setIsRecording] = useState(false);
   const [isVoiceDraft, setIsVoiceDraft] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [savingRecipeMessage, setSavingRecipeMessage] = useState(null);
+  const [savedMessageRecipes, setSavedMessageRecipes] = useState({});
   const endRef = useRef(null);
   const recognitionRef = useRef(null);
   const transcriptRef = useRef('');
@@ -95,6 +97,29 @@ export default function CommunityGroups() {
       return;
     }
     sendMessage(e);
+  };
+
+  const turnMessageIntoRecipe = async item => {
+    setSavingRecipeMessage(item.id);
+    try {
+      const { data: draft } = await api.post('/ai/structure', { rawText: item.content });
+      const { data: saved } = await api.post('/recipes', {
+        name: draft.name,
+        ingredients: draft.ingredients,
+        instructions: draft.instructions,
+        prepTime: draft.prepTime,
+        cookTime: draft.cookTime,
+        servings: draft.servings,
+        image: draft.image || null,
+        sourceUrl: draft.sourceUrl || null,
+        nutrition: draft.nutrition || null
+      });
+      setSavedMessageRecipes(previous => ({ ...previous, [item.id]: saved.id }));
+      toast.success('Recipe saved to your recipes');
+      navigate(`/recipes/${saved.id}`);
+    } catch (error) {
+      toast.error(error.response?.data?.error || error.message || 'Could not turn this message into a recipe');
+    } finally { setSavingRecipeMessage(null); }
   };
 
   const recordVoice = () => {
@@ -235,7 +260,9 @@ export default function CommunityGroups() {
                 return <div key={item.id} className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}><span className="mb-1 px-1 text-[11px] text-primary-600">{mine ? 'You' : item.user?.name || 'Member'}</span><div className={`max-w-[88%] rounded-2xl px-4 py-3 ${mine ? 'rounded-tr-sm bg-orange-700 text-white' : 'rounded-tl-sm border border-primary-100 bg-white text-primary-950'}`}>
                   {item.kind !== 'text' && <p className="mb-1 flex items-center gap-1 text-[11px] opacity-80">{item.kind === 'voice' ? <Mic className="h-3 w-3" /> : <Utensils className="h-3 w-3" />}{item.kind === 'voice' ? 'Voice note, transcribed' : 'Recipe to try'}</p>}
                   <p className="whitespace-pre-wrap break-words text-sm">{item.content}</p>
-                  {(item.kind === 'recipe' || /ingredients|recipe|masala|cook|cup|spoon/i.test(item.content)) && <button onClick={() => navigate('/recipes/ai', { state: { initialText: item.content } })} className={`mt-2 text-xs font-bold underline ${mine ? 'text-white' : 'text-orange-800'}`}>Turn this into a saved recipe</button>}
+                  {(item.kind === 'recipe' || /ingredients|recipe|masala|cook|cup|spoon/i.test(item.content)) && (savedMessageRecipes[item.id]
+                    ? <button onClick={() => navigate(`/recipes/${savedMessageRecipes[item.id]}`)} className={`mt-2 text-xs font-bold underline ${mine ? 'text-white' : 'text-orange-800'}`}>Open saved recipe</button>
+                    : <button onClick={() => turnMessageIntoRecipe(item)} disabled={savingRecipeMessage === item.id} className={`mt-2 text-xs font-bold underline disabled:opacity-60 ${mine ? 'text-white' : 'text-orange-800'}`}>{savingRecipeMessage === item.id ? 'Saving recipe…' : 'Turn this into a saved recipe'}</button>)}
                 </div></div>;
               })}<div ref={endRef} />
             </div>
