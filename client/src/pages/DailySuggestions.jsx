@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../lib/api';
 import { addMissingRecipeIngredients } from '../lib/addMissingRecipeIngredients';
+import { recordPlannedMeal } from '../lib/rewards';
 import RecipePhoto from '../components/RecipePhoto';
 import RecipeVideoLinks from '../components/RecipeVideoLinks';
 import useAuthStore from '../store/authStore';
@@ -131,12 +132,13 @@ export default function DailySuggestions() {
       } else {
         const now = new Date();
         const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        await api.post('/weeklyMenu', {
+        const planned = await api.post('/weeklyMenu', {
           recipeId,
           date,
           mealType: recipe.category === 'Lunch' ? 'Lunch' : 'Dinner',
           servings: recipe.servings || servings
         });
+        recordPlannedMeal(user?.id, planned.data);
         const addedCount = await addMissingRecipeIngredients(recipeId).catch(() => 0);
         toast.success(addedCount ? `Added to today's plan and ${addedCount} missing ingredients to your shopping list.` : 'Added to today’s personal meal plan.');
       }

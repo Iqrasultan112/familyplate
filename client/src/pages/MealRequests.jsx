@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../lib/api';
 import useAuthStore from '../store/authStore';
+import { recordPlannedMeal } from '../lib/rewards';
 import toast from 'react-hot-toast';
 import {
   Utensils, CalendarDays, MessageSquare, ArrowLeft,
@@ -50,6 +51,7 @@ export default function MealRequests() {
   const handleStatusChange = async (id, newStatus) => {
     try {
       const res = await api.patch(`/mealRequests/${id}/status`, { status: newStatus });
+      if (newStatus === 'approved' && recordPlannedMeal(user?.id, res.data?.menuItem)) toast.success('🌟 +10 kitchen points — meal planned!');
       setRequests(requests.map(r => r.id === id ? { ...r, status: res.data.status } : r));
       toast.success(`Request ${newStatus}`);
     } catch { toast.error('Failed to update status'); }

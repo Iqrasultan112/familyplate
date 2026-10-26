@@ -1,36 +1,33 @@
 import { useCallback, useEffect, useState } from 'react';
+import { readUserRewards, recordReward } from '../lib/rewards';
 
 const keyFor = userId => `familyplate.rewards.v1:${userId || 'guest'}`;
-const readRewards = key => {
-  try {
-    const value = JSON.parse(localStorage.getItem(key) || '{}');
-    return { points: Number(value.points) || 0, events: Array.isArray(value.events) ? value.events : [], activityDays: Array.isArray(value.activityDays) ? value.activityDays : [] };
-  } catch { return { points: 0, events: [], activityDays: [] }; }
-};
 
 export default function useRewardPoints(userId) {
   const key = keyFor(userId);
-  const [rewards, setRewards] = useState(() => readRewards(key));
+  const [rewards, setRewards] = useState(() => readUserRewards(userId));
 
   useEffect(() => {
-    setRewards(readRewards(key));
-    const refresh = event => { if (!event?.detail?.key || event.detail.key === key) setRewards(readRewards(key)); };
+    setRewards(readUserRewards(userId));
+    const refresh = event => {
+      if (!event?.detail?.key || event.detail.key === key) setRewards(readUserRewards(userId));
+    };
+    const refreshFromOtherTab = event => {
+      if (event.key === key) setRewards(readUserRewards(userId));
+    };
     window.addEventListener('familyplate:rewards-change', refresh);
-    return () => window.removeEventListener('familyplate:rewards-change', refresh);
-  }, [key]);
+    window.addEventListener('storage', refreshFromOtherTab);
+    return () => {
+      window.removeEventListener('familyplate:rewards-change', refresh);
+      window.removeEventListener('storage', refreshFromOtherTab);
+    };
+  }, [key, userId]);
 
   const award = useCallback((eventId, points) => {
-    if (!eventId) return false;
-    const current = readRewards(key);
-    if (current.events.includes(String(eventId))) return false;
-    const today = new Date();
-    const day = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const next = { points: current.points + points, events: [...current.events, String(eventId)].slice(-500), activityDays: [...new Set([...current.activityDays, day])].slice(-365) };
-    try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
-    setRewards(next);
-    window.dispatchEvent(new CustomEvent('familyplate:rewards-change', { detail: { key } }));
-    return true;
-  }, [key]);
+    const awarded = recordReward(userId, eventId, points);
+    if (awarded) setRewards(readUserRewards(userId));
+    return awarded;
+  }, [key, userId]);
 
   const dayKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   const days = new Set(rewards.activityDays);

@@ -149,14 +149,17 @@ router.patch('/:id/finalize', async (req, res) => {
     await prisma.eventSuggestion.updateMany({ where: { eventId, id: { in: ids } }, data: { isFinal: false } });
     await prisma.eventSuggestion.updateMany({ where: { eventId, id: { in: ids } }, data: { isFinal: true } });
     const finalRecipes = await prisma.eventSuggestion.findMany({ where: { eventId, isFinal: true, recipeId: { not: null } } });
+    const menuItems = [];
     for (const suggestion of finalRecipes) {
-      await prisma.weeklyMenu.upsert({
+      const menuItem = await prisma.weeklyMenu.upsert({
         where: { familyId_recipeId_date: { familyId: event.familyId, recipeId: suggestion.recipeId, date: event.date } },
         create: { familyId: event.familyId, recipeId: suggestion.recipeId, date: event.date, eventId, servings: event.guestCount },
-        update: { eventId, servings: event.guestCount }
+        update: { eventId, servings: event.guestCount },
+        include: { recipe: true, event: true }
       });
+      menuItems.push(menuItem);
     }
-    res.json({ message: 'Event menu finalized and added to the meal calendar', addedToCalendar: finalRecipes.length });
+    res.json({ message: 'Event menu finalized and added to the meal calendar', addedToCalendar: finalRecipes.length, menuItems });
   } catch { res.status(500).json({ error: 'Failed to finalize event menu' }); }
 });
 

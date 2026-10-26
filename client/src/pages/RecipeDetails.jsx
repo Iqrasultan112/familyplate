@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
+import useAuthStore from '../store/authStore';
+import { recordPlannedMeal } from '../lib/rewards';
 import RecipePhoto from '../components/RecipePhoto';
 import DayPickerModal from '../components/DayPickerModal';
 import ShoppingIngredientsModal from '../components/ShoppingIngredientsModal';
@@ -22,6 +24,7 @@ import RecipeVideoLinks from '../components/RecipeVideoLinks';
 
 export default function RecipeDetails() {
   const { id } = useParams();
+  const user = useAuthStore(state => state.user);
   const navigate = useNavigate();
   const [recipe, setRecipe] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -118,7 +121,8 @@ export default function RecipeDetails() {
     try {
       const famRes = await api.get('/family/mine');
       const family = famRes.data?.family || (Array.isArray(famRes.data?.families) ? famRes.data.families[0] : null);
-      await api.post('/weeklyMenu', { recipeId: Number(id), date, mealType, familyId: family?.id });
+      const planned = await api.post('/weeklyMenu', { recipeId: Number(id), date, mealType, familyId: family?.id });
+      if (recordPlannedMeal(user?.id, planned.data)) toast.success('🌟 +10 kitchen points — meal planned!');
       const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString();
       try {
         const addedCount = await addMissingRecipeIngredients(id);

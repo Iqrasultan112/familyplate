@@ -5,6 +5,7 @@ import { resolveRecipeImage } from '../lib/recipeImage';
 import RecipePhoto from '../components/RecipePhoto';
 import { listValue } from '../lib/listValue';
 import useAuthStore from '../store/authStore';
+import { recordPlannedMeal } from '../lib/rewards';
 import toast from 'react-hot-toast';
 import {
   CalendarDays, ArrowLeft, PlusCircle, CheckCircle2,
@@ -116,7 +117,8 @@ export default function EventPlanner() {
         prepTime: recipe.prepTime, cookTime: recipe.cookTime, servings: recipe.servings,
         image: recipe.image || null, sourceUrl: recipe.sourceUrl, nutrition: recipe.nutrition
       });
-      await api.post('/weeklyMenu', { date: eventDate, recipeId: saved.data.id, familyId: family.id, eventId: event.id, servings: event.guestCount || 4 });
+      const planned = await api.post('/weeklyMenu', { date: eventDate, recipeId: saved.data.id, familyId: family.id, eventId: event.id, servings: event.guestCount || 4 });
+      if (recordPlannedMeal(user?.id, planned.data)) toast.success('🌟 +10 kitchen points — event meal planned!');
       toast.success(`Added ${recipe.name} to ${event.name} on its event date`);
       fetchData();
     } catch (error) { toast.error(error.response?.data?.error || 'Could not add to calendar'); }
@@ -134,6 +136,7 @@ export default function EventPlanner() {
     const suggestionIds = event.suggestions.filter(item => item.voteCount === topScore).map(item => item.id);
     try {
       const { data } = await api.patch(`/events/${event.id}/finalize`, { suggestionIds });
+      (data.menuItems || []).forEach(menuItem => recordPlannedMeal(user?.id, menuItem));
       toast.success(data.message || 'Event menu finalized'); fetchData();
     } catch { toast.error('Failed to finalize'); }
   };
@@ -142,6 +145,7 @@ export default function EventPlanner() {
     setApprovingSuggestion(suggestionItem.id);
     try {
       const { data } = await api.post(`/events/suggestions/${suggestionItem.id}/approve`);
+      if (recordPlannedMeal(user?.id, data.menuItem)) toast.success('🌟 +10 kitchen points — event meal planned!');
       toast.success(data.message || `${suggestionItem.recipeName} approved and added to the meal plan`);
       fetchData();
     } catch (error) { toast.error(error.response?.data?.error || 'Could not approve this meal'); }

@@ -74,16 +74,17 @@ const approveRequest = async (requestId, userId, schedule = {}) => {
   const date = schedule.date ? new Date(`${dateKey}T00:00:00.000Z`) : new Date(existing.requestedDate);
   if (!schedule.date) date.setHours(0, 0, 0, 0);
   const mealType = ['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Side dish'].includes(schedule.mealType) ? schedule.mealType : 'Dinner';
-  const [request] = await prisma.$transaction([
+  const [request, menuItem] = await prisma.$transaction([
     prisma.mealRequest.update({ where: { id: requestId }, data: { status: 'approved', isApproved: true, approvedBy: userId } }),
     prisma.weeklyMenu.upsert({
       where: { familyId_recipeId_date: { familyId: existing.familyId, recipeId, date } },
       create: { familyId: existing.familyId, recipeId, date, mealType, servings: existing.family.expectedMembers || 4 },
-      update: { servings: existing.family.expectedMembers || 4, mealType }
+      update: { servings: existing.family.expectedMembers || 4, mealType },
+      include: { recipe: true, event: true }
     })
   ]);
   if (existing.userId !== userId) await prisma.notification.create({ data: { userId: existing.userId, message: `${existing.mealName} was approved and added to the family menu` } });
-  return { request };
+  return { request, menuItem };
 };
 
 router.patch('/:id/approve', async (req, res) => {
@@ -92,7 +93,7 @@ router.patch('/:id/approve', async (req, res) => {
     if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid request' });
     const result = await approveRequest(id, req.user.id, req.body);
     if (result.error) return res.status(result.status).json({ error: result.error });
-    res.json({ message: 'Meal approved and added to the family menu', request: result.request });
+    res.json({ message: 'Meal approved and added to the family menu', request: result.request, menuItem: result.menuItem });
   } catch { res.status(500).json({ error: 'Failed to approve meal request' }); }
 });
 
@@ -103,7 +104,7 @@ router.patch('/:id/status', async (req, res) => {
     if (req.body.status === 'approved') {
       const result = await approveRequest(id, req.user.id);
       if (result.error) return res.status(result.status).json({ error: result.error });
-      return res.json(result.request);
+      return res.json({ ...result.request, menuItem: result.menuItem });
     }
     const existing = await prisma.mealRequest.findUnique({ where: { id }, select: { familyId: true } });
     if (!existing) return res.status(404).json({ error: 'Meal request not found' });

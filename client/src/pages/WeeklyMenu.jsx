@@ -212,7 +212,6 @@ export default function WeeklyMenu() {
     try {
       const { data } = await api.post(`/weeklyMenu/${activeCooking.id}/complete`);
       if (!['completed', 'cooked'].includes(activeCooking.status) && award(`cooked:${activeCooking.id}`, 20)) toast.success('🏅 +20 kitchen points — home chef!');
-      if (!['completed', 'cooked'].includes(activeCooking.status)) award(`cooked:${activeCooking.id}`, 20);
       setCookResult(data); setActiveCooking(data.item); setMenuItems(items => items.map(item => item.id === data.item.id ? { ...item, ...data.item } : item));
       const updated = await api.get('/inventory').catch(() => ({ data: pantry })); setPantry(updated.data || pantry);
       toast.success('Meal complete — your pantry has been updated');

@@ -18,7 +18,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { points, plannedMeals, completedMeals, streak, level } = useRewardPoints(user?.id);
   const navigate = useNavigate();
-  const [todayMeals, setTodayMeals] = useState(null);
+  const [weekMeals, setWeekMeals] = useState(null);
   const firstName = user?.name?.split(' ')[0] || 'there';
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -26,7 +26,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     let active = true;
-    const loadToday = async () => {
+    let loading = false;
+    const loadWeek = async () => {
+      if (loading) return;
+      loading = true;
       try {
         const familyResponse = await api.get('/family/mine').catch(() => null);
         const family = familyResponse?.data?.family || familyResponse?.data || null;
@@ -35,18 +38,37 @@ export default function Dashboard() {
           : true);
         const menuResponse = await api.get(family?.id ? `/weeklyMenu/family/${family.id}` : '/weeklyMenu');
         const rows = Array.isArray(menuResponse.data) ? menuResponse.data : [];
+        const from = todayKey();
+        const throughDate = new Date();
+        throughDate.setDate(throughDate.getDate() + 6);
+        const through = `${throughDate.getFullYear()}-${String(throughDate.getMonth() + 1).padStart(2, '0')}-${String(throughDate.getDate()).padStart(2, '0')}`;
+        const mealOrder = ['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Side dish'];
         const meals = rows.filter(item => {
-          const date = new Date(item.date);
-          return !Number.isNaN(date.getTime()) && `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` === todayKey();
-        }).sort((a, b) => ['Breakfast', 'Lunch', 'Dinner', 'Snack'].indexOf(a.mealType) - ['Breakfast', 'Lunch', 'Dinner', 'Snack'].indexOf(b.mealType));
-        if (active) setTodayMeals(meals);
+          const dateKey = String(item.date || '').slice(0, 10);
+          return dateKey >= from && dateKey <= through;
+        }).sort((a, b) => String(a.date).slice(0, 10).localeCompare(String(b.date).slice(0, 10))
+          || mealOrder.indexOf(a.mealType) - mealOrder.indexOf(b.mealType));
+        if (active) setWeekMeals(meals);
       } catch {
-        if (active) setTodayMeals([]);
+        if (active) setWeekMeals([]);
+      } finally {
+        loading = false;
       }
     };
-    loadToday();
-    return () => { active = false; };
-  }, []);
+    const refreshWhenVisible = () => { if (document.visibilityState === 'visible') loadWeek(); };
+    loadWeek();
+    window.addEventListener('focus', refreshWhenVisible);
+    window.addEventListener('familyplate:weekly-menu-change', loadWeek);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    const refreshTimer = window.setInterval(refreshWhenVisible, 30_000);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', refreshWhenVisible);
+      window.removeEventListener('familyplate:weekly-menu-change', loadWeek);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.clearInterval(refreshTimer);
+    };
+  }, [user?.id]);
 
   const tasks = isMaker ? [
     { title: 'Ask for a meal idea', subtitle: 'Pantry, time, mood—tell the helper what you need.', local: 'Aaj kya pakayen?', icon: MessageCircle, path: '/family/meal-chat', strong: true },
@@ -96,24 +118,28 @@ export default function Dashboard() {
       <section className="rounded-3xl border border-primary-200 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="today-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.12em] text-primary-600">Today · Aaj</p>
-            <h2 id="today-heading" className="mt-1 text-xl font-bold text-primary-950">What’s on the menu?</h2>
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-primary-600">Today and the next 6 days · Aaj aur aglay 6 din</p>
+            <h2 id="today-heading" className="mt-1 text-xl font-bold text-primary-950">This week’s plan</h2>
           </div>
           <button onClick={() => navigate('/weekly-menu')} className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-bold text-primary-800 hover:bg-primary-50">See this week <ArrowRight className="h-4 w-4" /></button>
         </div>
-        {todayMeals === null ? (
-          <p className="mt-4 rounded-2xl bg-primary-50 px-4 py-4 text-sm text-primary-700">Loading today’s meals…</p>
-        ) : todayMeals.length ? (
+        {weekMeals === null ? (
+          <p className="mt-4 rounded-2xl bg-primary-50 px-4 py-4 text-sm text-primary-700">Loading this week’s meals…</p>
+        ) : weekMeals.length ? (
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {todayMeals.map(item => <div key={item.id} className="flex items-center gap-3 rounded-2xl border border-primary-100 bg-[#fffaf6] p-4">
+            {weekMeals.map(item => {
+              const dateKey = String(item.date || '').slice(0, 10);
+              const dateLabel = dateKey === todayKey() ? 'Today' : new Date(`${dateKey}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+              return <button key={item.id} type="button" onClick={() => navigate(`/weekly-menu?date=${dateKey}`)} className="flex items-center gap-3 rounded-2xl border border-primary-100 bg-[#fffaf6] p-4 text-left transition hover:border-primary-300 hover:shadow-sm">
               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary-100 text-primary-800"><UtensilsCrossed className="h-5 w-5" /></span>
-              <div className="min-w-0 flex-1"><p className="text-xs font-bold uppercase tracking-wide text-primary-600">{item.mealType}</p><p className="truncate font-bold text-primary-950">{item.recipe?.name || item.mealName || 'Planned meal'}</p></div>
+              <div className="min-w-0 flex-1"><p className="text-xs font-bold uppercase tracking-wide text-primary-600">{dateLabel} · {item.mealType}</p><p className="truncate font-bold text-primary-950">{item.recipe?.name || item.mealName || 'Planned meal'}</p></div>
               {['completed', 'cooked'].includes(item.status) && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800"><Check className="h-3.5 w-3.5" />Cooked</span>}
-            </div>)}
+              </button>;
+            })}
           </div>
         ) : (
           <div className="mt-4 flex flex-col gap-4 rounded-2xl bg-[#fffaf6] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-            <div className="flex items-center gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary-100 text-primary-800"><ChefHat className="h-5 w-5" /></span><div><p className="font-bold text-primary-950">No meals planned for today</p><p className="mt-1 text-sm text-primary-700">Aaj ka khana add karein, ya helper se idea lein.</p></div></div>
+            <div className="flex items-center gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary-100 text-primary-800"><ChefHat className="h-5 w-5" /></span><div><p className="font-bold text-primary-950">No meals planned for the next 7 days</p><p className="mt-1 text-sm text-primary-700">Add a meal to your weekly plan and it will appear here.</p></div></div>
             <button onClick={() => navigate('/weekly-menu')} className="btn-secondary min-h-11 shrink-0">Add today’s meal</button>
           </div>
         )}

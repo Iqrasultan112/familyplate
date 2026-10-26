@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { notifyWeeklyMenuChanged } from './rewards';
 
 const configuredApiUrl = import.meta.env.VITE_API_URL?.replace(/\/+$/, '');
 const apiBaseUrl = configuredApiUrl
@@ -22,6 +23,15 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use((response) => {
+  const method = response.config?.method?.toLowerCase();
+  const path = String(response.config?.url || '').split('?')[0].replace(/\/+$/, '');
+  const menuWrite = ['post', 'patch', 'delete'].includes(method) && (
+    /^\/weeklyMenu(?:\/|$)/i.test(path)
+    || /^\/mealRequests\/\d+\/(?:approve|status)$/i.test(path)
+    || /^\/events\/\d+\/finalize$/i.test(path)
+    || /^\/events\/suggestions\/\d+\/approve$/i.test(path)
+  );
+  if (menuWrite) notifyWeeklyMenuChanged();
   return response;
 }, (error) => {
   if (error.response?.status === 401) {
