@@ -118,7 +118,7 @@ export default function EventPlanner() {
         image: recipe.image || null, sourceUrl: recipe.sourceUrl, nutrition: recipe.nutrition
       });
       const planned = await api.post('/weeklyMenu', { date: eventDate, recipeId: saved.data.id, familyId: family.id, eventId: event.id, servings: event.guestCount || 4 });
-      if (recordPlannedMeal(user?.id, planned.data)) toast.success('🌟 +10 kitchen points — event meal planned!');
+      if (recordPlannedMeal(user?.id, planned.data)) toast.success('Event meal added to the plan · +10 points');
       toast.success(`Added ${recipe.name} to ${event.name} on its event date`);
       fetchData();
     } catch (error) { toast.error(error.response?.data?.error || 'Could not add to calendar'); }
@@ -145,7 +145,7 @@ export default function EventPlanner() {
     setApprovingSuggestion(suggestionItem.id);
     try {
       const { data } = await api.post(`/events/suggestions/${suggestionItem.id}/approve`);
-      if (recordPlannedMeal(user?.id, data.menuItem)) toast.success('🌟 +10 kitchen points — event meal planned!');
+      if (recordPlannedMeal(user?.id, data.menuItem)) toast.success('Event meal added to the plan · +10 points');
       toast.success(data.message || `${suggestionItem.recipeName} approved and added to the meal plan`);
       fetchData();
     } catch (error) { toast.error(error.response?.data?.error || 'Could not approve this meal'); }

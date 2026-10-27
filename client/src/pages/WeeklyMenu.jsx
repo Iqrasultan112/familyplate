@@ -151,7 +151,7 @@ export default function WeeklyMenu() {
         }
         const res = await api.post('/weeklyMenu', { date, recipeId: selectedRecipeId, servings, mealType, familyId });
         setMenuItems([...menuItems, res.data]);
-        if (award(`planned:${res.data.id}`, 10)) toast.success('🌟 +10 kitchen points — meal planned!');
+        if (award(`planned:${res.data.id}`, 10)) toast.success('Meal planned · +10 points');
         if (planChoice === 'next-week') setCurrentDate(new Date(`${date}T12:00:00`));
         try {
           const addedCount = await addMissingRecipeIngredients(selectedRecipeId);
@@ -211,7 +211,7 @@ export default function WeeklyMenu() {
     setFinishing(true);
     try {
       const { data } = await api.post(`/weeklyMenu/${activeCooking.id}/complete`);
-      if (!['completed', 'cooked'].includes(activeCooking.status) && award(`cooked:${activeCooking.id}`, 20)) toast.success('🏅 +20 kitchen points — home chef!');
+      if (!['completed', 'cooked'].includes(activeCooking.status) && award(`cooked:${activeCooking.id}`, 20)) toast.success('Cooking complete · +20 points');
       setCookResult(data); setActiveCooking(data.item); setMenuItems(items => items.map(item => item.id === data.item.id ? { ...item, ...data.item } : item));
       const updated = await api.get('/inventory').catch(() => ({ data: pantry })); setPantry(updated.data || pantry);
       toast.success('Meal complete — your pantry has been updated');

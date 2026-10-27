@@ -227,7 +227,7 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
         for (const item of items) await api.post('/shopping', item);
       }
       const earned = award(`shopping:${recipe.name}:${Date.now()}`, 5);
-      toast.success(`${items.length} missing item${items.length === 1 ? '' : 's'} added to your shopping list 🛒${earned ? ' · +5 kitchen points!' : ''}`);
+      toast.success(`${items.length} missing item${items.length === 1 ? '' : 's'} added to your shopping list${earned ? ' · +5 points' : ''}.`);
       return items.length;
     } catch (error) {
       toast.error(error.response?.data?.error || 'Could not add items. Please try again.');
@@ -265,7 +265,7 @@ export default function MealPlannerChat({ family, servings = 4, onSendToVote, co
         servings: Number.parseInt(recipe.servings, 10) || servings,
         ...(family?.id ? { familyId: family.id } : {})
       });
-      if (award(`planned:${plannedMeal.id}`, 10)) toast.success('🌟 +10 kitchen points — meal planned!');
+      if (award(`planned:${plannedMeal.id}`, 10)) toast.success('Meal planned · +10 points');
       setPlannedRecipes(previous => ({ ...previous, [planKey]: true }));
       let shoppingCount = 0;
       try { shoppingCount = await addMissingRecipeIngredients(savedRecipe.id); }

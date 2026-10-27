@@ -37,7 +37,7 @@ export default function Register() {
       });
 
       login(res.data.user, res.data.token);
-      toast.success(`Welcome to FamilyPlate, ${name}! 🎉`);
+      toast.success(`Welcome to FamilyPlate, ${name}.`);
 
       // Family setup stays optional. A planner or member without an invite can
       // start using their own account immediately.

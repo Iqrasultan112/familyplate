@@ -114,8 +114,8 @@ export default function FamilyVoting() {
       const date = approvalDates[req.id] || (requested < localDateKey(new Date()) ? localDateKey(new Date()) : requested);
       const mealType = approvalMealTypes[req.id] || 'Dinner';
       const res = await api.patch(`/mealRequests/${req.id}/approve`, { date, mealType });
-      if (recordPlannedMeal(user?.id, res.data?.menuItem)) toast.success('🌟 +10 kitchen points — family meal planned!');
-      toast.success(`🎉 ${req.mealName} approved and added to family menu!`);
+      if (recordPlannedMeal(user?.id, res.data?.menuItem)) toast.success('Meal added to the family plan · +10 points');
+      toast.success(`${req.mealName} approved and added to the family menu.`);
 
       // Check ingredients against inventory
       try {

@@ -166,7 +166,4 @@
 :root[data-theme] .bg-primary-100,
 :root[data-theme] .page-heading { background-color: var(--theme-soft); }
 :root[data-theme] :focus-visible { outline-color: var(--theme-strong); }
-:root[data-theme] .reward-panel { border-color: var(--theme-line); background: linear-gradient(120deg, var(--theme-soft), #fff 90%); color: var(--theme-ink); }
-:root[data-theme] .reward-pill,
-:root[data-theme] .reward-badge { background: var(--theme-strong); color: #fff; }
-:root[data-theme] .reward-progress { background: var(--theme-strong); }
+:root[data-theme] .reward-panel { border-color: var(--theme-line); background: color-mix(in srgb, var(--theme-pale) 45%, #fff); color: var(--theme-ink); }

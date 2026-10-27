@@ -51,7 +51,7 @@ export default function MealRequests() {
   const handleStatusChange = async (id, newStatus) => {
     try {
       const res = await api.patch(`/mealRequests/${id}/status`, { status: newStatus });
-      if (newStatus === 'approved' && recordPlannedMeal(user?.id, res.data?.menuItem)) toast.success('🌟 +10 kitchen points — meal planned!');
+      if (newStatus === 'approved' && recordPlannedMeal(user?.id, res.data?.menuItem)) toast.success('Meal added to the family plan · +10 points');
       setRequests(requests.map(r => r.id === id ? { ...r, status: res.data.status } : r));
       toast.success(`Request ${newStatus}`);
     } catch { toast.error('Failed to update status'); }

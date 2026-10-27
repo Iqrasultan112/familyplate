@@ -16,7 +16,7 @@ const todayKey = () => {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { points, plannedMeals, completedMeals, streak, level } = useRewardPoints(user?.id);
+  const { points, completedMeals, streak } = useRewardPoints(user?.id);
   const navigate = useNavigate();
   const [weekMeals, setWeekMeals] = useState(null);
   const firstName = user?.name?.split(' ')[0] || 'there';
@@ -99,19 +99,27 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <section className="reward-panel rounded-3xl border p-5 shadow-sm sm:p-6" aria-labelledby="reward-heading">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/75 text-2xl shadow-sm" aria-hidden="true">🌟</div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2"><h2 id="reward-heading" className="text-lg font-extrabold">Your kitchen wins</h2><span className="reward-pill rounded-full px-3 py-1 text-xs font-bold">{points} points</span><span className="rounded-full bg-white/75 px-3 py-1 text-xs font-bold">{level}</span><span className="rounded-full bg-white/75 px-3 py-1 text-xs font-bold">🔥 {streak} day streak</span></div>
-            <p className="mt-1 text-sm">Plan a meal to earn 10 points; finish cooking one for 20 more. Keep your streak going and collect kitchen badges!</p>
-            <div className="mt-3 flex flex-wrap gap-2" aria-label="Earned badges">
-              <span className={`rounded-full px-3 py-1 text-xs font-bold ${points >= 10 ? 'reward-badge' : 'bg-white/70 text-slate-500'}`}>{points >= 10 ? '🏅' : '🔒'} Meal planner</span>
-              <span className={`rounded-full px-3 py-1 text-xs font-bold ${completedMeals >= 1 ? 'reward-badge' : 'bg-white/70 text-slate-500'}`}>{completedMeals >= 1 ? '👩‍🍳' : '🔒'} Home chef</span>
-              <span className={`rounded-full px-3 py-1 text-xs font-bold ${completedMeals >= 3 ? 'reward-badge' : 'bg-white/70 text-slate-500'}`}>{completedMeals >= 3 ? '✨' : '🔒'} Kitchen star</span>
+      <section className="reward-panel rounded-2xl border p-5 sm:p-6" aria-labelledby="reward-heading">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+          <div className="max-w-xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary-600">Meal planning</p>
+            <h2 id="reward-heading" className="mt-1 text-xl font-semibold">Your activity</h2>
+            <p className="mt-1 text-sm text-primary-700">Plan and cook at your own pace. A planned meal adds 10 points; cooking it adds 20.</p>
+          </div>
+          <div className="grid w-full grid-cols-3 gap-2 sm:gap-3 xl:w-auto">
+            <div className="rounded-xl border border-primary-100 bg-white/90 px-2 py-3 text-center sm:min-w-28 sm:px-4">
+              <p className="text-2xl font-semibold tabular-nums text-primary-950">{points}</p>
+              <p className="mt-1 text-xs font-medium text-primary-700">Points</p>
+            </div>
+            <div className="rounded-xl border border-primary-100 bg-white/90 px-2 py-3 text-center sm:min-w-28 sm:px-4">
+              <p className="text-2xl font-semibold tabular-nums text-primary-950">{streak} <span className="text-sm font-medium">{streak === 1 ? 'day' : 'days'}</span></p>
+              <p className="mt-1 text-xs font-medium text-primary-700">Current streak</p>
+            </div>
+            <div className="rounded-xl border border-primary-100 bg-white/90 px-2 py-3 text-center sm:min-w-28 sm:px-4">
+              <p className="text-2xl font-semibold tabular-nums text-primary-950">{completedMeals}</p>
+              <p className="mt-1 text-xs font-medium text-primary-700">Meals cooked</p>
             </div>
           </div>
-          <div className="w-full sm:w-44"><div className="flex justify-between text-xs font-bold"><span>3-meal challenge</span><span>{Math.min(plannedMeals, 3)}/3</span></div><div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/70"><div className="reward-progress h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(plannedMeals, 3) / 3 * 100}%` }} /></div><p className="mt-1 text-xs">{plannedMeals >= 3 ? '🎉 Challenge complete!' : `${3 - Math.min(plannedMeals, 3)} more meal${3 - Math.min(plannedMeals, 3) === 1 ? '' : 's'} to go`}</p></div>
         </div>
       </section>
 

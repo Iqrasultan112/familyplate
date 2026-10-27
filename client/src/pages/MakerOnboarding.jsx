@@ -70,7 +70,7 @@ export default function MakerOnboarding() {
       const res = await api.post('/ai/extract-groceries', { rawText: groceryText });
       const items = res.data.items || [];
       setExtractedItems(items);
-      toast.success(`✨ Extracted ${items.length} pantry items!`);
+      toast.success(`${items.length} pantry items extracted.`);
     } catch (error) {
       toast.error('Failed to extract groceries. Please check items.');
     } finally {

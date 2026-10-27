@@ -89,7 +89,7 @@ export default function MemberJoin() {
       });
 
       if (checkAuth) checkAuth();
-      toast.success('Joined family group successfully! 🎉');
+      toast.success('Joined the family group successfully.');
       navigate('/family');
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to join family');

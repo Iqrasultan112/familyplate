@@ -122,7 +122,7 @@ export default function RecipeDetails() {
       const famRes = await api.get('/family/mine');
       const family = famRes.data?.family || (Array.isArray(famRes.data?.families) ? famRes.data.families[0] : null);
       const planned = await api.post('/weeklyMenu', { recipeId: Number(id), date, mealType, familyId: family?.id });
-      if (recordPlannedMeal(user?.id, planned.data)) toast.success('🌟 +10 kitchen points — meal planned!');
+      if (recordPlannedMeal(user?.id, planned.data)) toast.success('Meal added to your plan · +10 points');
       const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString();
       try {
         const addedCount = await addMissingRecipeIngredients(id);
