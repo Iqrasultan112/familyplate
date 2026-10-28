@@ -2,6 +2,7 @@ import React from 'react';
 import { Clock, Users, Heart, Plus, ArrowUpRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import RecipePhoto from './RecipePhoto';
+import WhatsAppRecipeShareButton from './WhatsAppRecipeShareButton';
 
 const RecipeCard = ({ recipe, showActions = true, onSave, onAddToMenu, isSaved }) => {
   const navigate = useNavigate();
@@ -55,17 +56,20 @@ const RecipeCard = ({ recipe, showActions = true, onSave, onAddToMenu, isSaved }
 
         <div className="recipe-card-footer">
           <span className="recipe-author">By {recipe.creator?.name || recipe.creatorName || 'FamilyPlate cook'}</span>
-          {showActions && onAddToMenu && (
-            <button
-              type="button"
-              onClick={event => { event.stopPropagation(); onAddToMenu(recipe); }}
-              className="recipe-add-button"
-              aria-label={`Add ${title} to meal plan`}
-              title="Add to meal plan"
-            >
-              <Plus size={17} /><span>Add to plan</span>
-            </button>
-          )}
+          <div className="flex shrink-0 items-center gap-1.5">
+            <WhatsAppRecipeShareButton recipe={recipe} label="Share" />
+            {showActions && onAddToMenu && (
+              <button
+                type="button"
+                onClick={event => { event.stopPropagation(); onAddToMenu(recipe); }}
+                className="recipe-add-button"
+                aria-label={`Add ${title} to meal plan`}
+                title="Add to meal plan"
+              >
+                <Plus size={17} /><span>Add to plan</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </article>

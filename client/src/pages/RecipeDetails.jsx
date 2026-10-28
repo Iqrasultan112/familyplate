@@ -21,6 +21,7 @@ import DayPickerModal from '../components/DayPickerModal';
 import ShoppingIngredientsModal from '../components/ShoppingIngredientsModal';
 import { addMissingRecipeIngredients } from '../lib/addMissingRecipeIngredients';
 import RecipeVideoLinks from '../components/RecipeVideoLinks';
+import WhatsAppRecipeShareButton from '../components/WhatsAppRecipeShareButton';
 
 export default function RecipeDetails() {
   const { id } = useParams();
@@ -180,6 +181,7 @@ export default function RecipeDetails() {
         </button>
 
         <div className="flex items-center gap-2">
+          <WhatsAppRecipeShareButton recipe={recipe} label="WhatsApp" className="px-3 py-2" />
           <button onClick={handleSendToFamilyVote} className="flex items-center gap-1.5 rounded-xl border border-[#eedbd1] px-3 py-2 text-xs text-[#62483f] hover:bg-[#f8e8df]">
             <Vote className="w-4 h-4 text-purple-600" /> Send to Family Vote
           </button>
